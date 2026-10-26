@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+build/
+dist/
+.DS_Store
+.playwright-cli/
+output/
+.local/
+lotus_lamp_config.json
+.lotus_lamp.json

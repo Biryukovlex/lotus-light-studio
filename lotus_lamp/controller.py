@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 """
-Complete Lotus Lamp Controller - CORRECTED COMMAND FORMATS
-All commands use 9-byte format with 0xFF for unused parameters
-"""
-
-"""
 Lotus Lamp BLE Controller
 
-Main controller class for communicating with Lotus Lamp RGB LED strips.
+Basic controls and inherited timer helpers for compatible RGB LED strips.
+Implemented packets use nine bytes with command-specific padding. See
+docs/PROTOCOL.md for verification limits and experimental frame hold.
 """
 
 import asyncio
+import time
 import os
 from datetime import datetime
 from bleak import BleakClient, BleakScanner
@@ -48,6 +46,10 @@ class LotusLamp:
     DEFAULT_WRITE_CHAR_UUID = "0000FFF3-0000-1000-8000-00805F9B34FB"
     DEFAULT_NOTIFY_CHAR_UUID = "0000FFF4-0000-1000-8000-00805F9B34FB"
 
+    # Observed reversible frame hold on SSG-500; outside normal speed 0..100.
+    # This is an experimental firmware behavior, not a documented pause opcode.
+    ANIMATION_HOLD_SPEED = 0x80
+
     def __init__(self,
                  device_config: Optional[DeviceConfig] = None,
                  config_path: Optional[Union[str, Path]] = None,
@@ -67,8 +69,9 @@ class LotusLamp:
             FileNotFoundError: If specified config_path doesn't exist
 
         Note:
-            On first use, you must run the setup wizard to configure your device:
-                python -m lotus_lamp.setup
+            Pass DeviceConfig directly, supply config_path, or discover/save a
+            library configuration with the optional python -m lotus_lamp.setup.
+            The local browser app has a separate configuration path.
         """
         self.device = None
         self.client: Optional[BleakClient] = None
@@ -226,7 +229,10 @@ class LotusLamp:
             hex_str = ' '.join(f'{b:02X}' for b in command)
             print(f"Sending command: {hex_str}")
 
+        started = time.monotonic()
         await self.client.write_gatt_char(self.WRITE_CHAR_UUID, command, response=False)
+        # Host write timing, not an acknowledgement of firmware processing.
+        self.last_write_started = started
         await asyncio.sleep(delay)
 
     # ==================== RGB COLOR CONTROL ====================
@@ -312,22 +318,32 @@ class LotusLamp:
         command = bytes([0x7E, 0x04, 0x02, speed, 0xFF, 0xFF, 0xFF, 0x00, 0xEF])
         await self._send_command(command)
 
+    async def hold_animation(self, *, delay: float = 0.1):
+        """Request an experimental current-frame hold using raw speed 0x80.
+
+        Verified initially on SSG-500 preset 138. Duration and other effects are
+        not guaranteed. Call set_speed(0..100) to resume normal playback.
+        """
+        command = bytes([0x7E, 0x04, 0x02, self.ANIMATION_HOLD_SPEED,
+                         0xFF, 0xFF, 0xFF, 0x00, 0xEF])
+        await self._send_command(command, delay=delay)
+
     # ==================== ANIMATION MODES ====================
 
-    async def set_animation(self, mode: int):
+    async def set_animation(self, mode: int, *, delay: float = 0.1):
         """
         Set animation mode
 
         Args:
-            mode: Animation mode (1-233)
+            mode: Animation mode (0-212)
 
         Command: 7E 07 03 XX FF FF FF 00 EF
         Protocol length: 7, Command type: 3 (MODE)
         Parameters: {mode}
         """
-        mode = max(1, min(233, mode))
+        mode = max(0, min(212, mode))
         command = bytes([0x7E, 0x07, 0x03, mode, 0xFF, 0xFF, 0xFF, 0x00, 0xEF])
-        await self._send_command(command)
+        await self._send_command(command, delay=delay)
 
     # ==================== POWER CONTROL ====================
 
@@ -360,8 +376,8 @@ class LotusLamp:
         """
         Sync current time to lamp (required before setting timers)
 
-        The lamp has no real-time clock - it relies on the app to provide
-        the current time. Always call this before set_timer_on/set_timer_off.
+        Call this before set_timer_on/set_timer_off. Clock persistence and timer
+        behavior have not been physically validated on the SSG-500.
 
         Command uses E1Achieve format (standard 9-byte protocol):
         7E 06 83 HH MM SS WW 00 EF
@@ -369,10 +385,9 @@ class LotusLamp:
         Protocol length: 0x06 (DATA_TIME-specific)
         Parameters: {hour, minute, second, weekday}
 
-        Note: weekday uses Android Calendar convention minus 1:
-        syncData() uses calendar.get(7) - 1, which gives Sunday=0, Monday=1, ..., Saturday=6
-        Python's weekday() gives Monday=0, ..., Saturday=5, Sunday=6
-        So we convert: (weekday() + 1) % 7 to match Java's convention
+        Current code emits Monday=1 through Sunday=7. Earlier upstream comments
+        described a different native convention; firmware semantics still need
+        hardware validation. This documents emitted bytes, not a verified schedule.
         """
         now = datetime.now()
         weekday = now.weekday() + 1 # Mon=1...Sun=7
@@ -387,7 +402,7 @@ class LotusLamp:
             hour: Hour (0-23)
             minute: Minute (0-59)
             days: Optional list of days e.g. ['monday', 'friday']
-                  None/empty = one-shot timer (fires once)
+                  None/empty emits enabled mask 0x80; one-shot semantics unverified.
 
         Note: Call sync_time() first so the lamp knows the current time.
 
@@ -412,7 +427,7 @@ class LotusLamp:
             hour: Hour (0-23)
             minute: Minute (0-59)
             days: Optional list of days e.g. ['monday', 'friday']
-                  None/empty = one-shot timer (fires once)
+                  None/empty emits enabled mask 0x80; one-shot semantics unverified.
 
         Note: Call sync_time() first so the lamp knows the current time.
 
@@ -457,14 +472,14 @@ class LotusLamp:
         Build week repeat bitmask byte
 
         Args:
-            days: List of day name strings. Empty/None = one-shot timer.
+            days: Day name strings. Empty/None adds no repeat-day bits.
 
         Returns:
             Bitmask byte with bit 7 (0x80) set as enabled flag,
-            plus bits for each selected day matching Java Calendar convention:
-            Sunday=bit0, Monday=bit1, ..., Saturday=bit6
+            plus Monday=bit0 through Sunday=bit6. Unknown names add nothing.
+            Intended firmware weekday/one-shot semantics need hardware validation.
         """
-        # Bitmask must match the weekday convention used in sync_time:
+        # Current repeat-day mapping (firmware semantics not yet validated):
         # Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6
         DAY_MAP = {
             'monday': 0x01, 'tuesday': 0x02, 'wednesday': 0x04,

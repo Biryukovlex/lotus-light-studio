@@ -1,381 +1,84 @@
-# Configuration Guide
+# Configuration and local storage
 
-Advanced configuration guide for Lotus Lamp devices.
+## Browser app
 
-## Two Usage Patterns
+The app controls one connected lamp at a time. Scan/select in the UI, or reconnect the exact saved device. It verifies the configured service and write-without-response characteristic before enabling commands. It does not fall back to another device with the same name.
 
-Lotus Lamp supports two main usage patterns:
+In a source checkout, private files live in `.local/`:
 
-1. **Library Use** - Integrating into your own Python projects
-   - Create config in your project directory (`lotus_lamp_config.json`)
-   - Or pass config directly in code (`DeviceConfig(...)`)
-   - No "setup" required - configure as part of your app
+| File | Contents |
+| --- | --- |
+| `app-device.json` | One saved device: name, exact platform Bluetooth identity and GATT UUIDs |
+| `app-device.presets.json` | Versioned custom recipes, independent of the current connection |
 
-2. **Standalone Use** - Using CLI tools and examples
-   - Run setup wizard once (`python -m lotus_lamp.setup`)
-   - Choose to save to global config (`~/.lotus_lamp/config.json`)
-   - Tools automatically find your lamp
+Both files are ignored by Git. Successful saves use a temporary file, rename and mode 0600. Device save failure leaves the connection usable but shows a notice. Invalid preset files are preserved; edits are refused instead of overwriting them. Back up these two files yourself if you want to retain local settings. They are not firmware backups or factory defaults.
 
-This guide covers both patterns.
+Choose a writable custom location with:
 
-## Configuration Loading
-
-### Search Order
-
-The library searches for configuration files in this order:
-
-1. **Local directory** (project-specific):
-   - `./lotus_lamp_config.json`
-   - `./.lotus_lamp.json`
-
-2. **User home directory** (global):
-   - `~/.lotus_lamp/config.json`
-
-This allows you to have project-specific configurations that override your global settings.
-
-### Loading Feedback
-
-By default, configuration loading is silent. To see where configs are loaded from:
-
-**Option 1: Verbose parameter**
-```python
-lamp = LotusLamp(verbose=True)
+```sh
+.venv/bin/python -m lotus_lamp.app --config "$HOME/.local/share/lotus-light-studio/device.json"
 ```
 
-**Option 2: Environment variable**
-```bash
-export LOTUS_LAMP_VERBOSE=1  # Linux/Mac
-set LOTUS_LAMP_VERBOSE=1     # Windows
-```
+Presets then live alongside it as `device.presets.json`. The default location is relative to the installed package, not the shell's current directory. Use `--config` when running an installed wheel from a location you cannot write to. `--port 8421` changes the loopback port; `--no-browser` prevents automatic browser opening.
 
-Then in your code:
-```python
-lamp = LotusLamp()  # Will automatically be verbose
-```
+### Device file
 
-### Example Output (Verbose Mode)
-
-```
-Loading config from: ./lotus_lamp_config.json
-✓ Loaded 2 device(s) from: ./lotus_lamp_config.json
-Using device: My Lamp
-```
-
-## Configuration File Format
-
-### Multiple Devices
+The app writes a single device object, not the library's multi-device wrapper:
 
 ```json
 {
-  "devices": [
-    {
-      "name": "Living Room Lamp",
-      "address": "XX:XX:XX:XX:XX:XX",
-      "service_uuid": "0000FFF0-0000-1000-8000-00805F9B34FB",
-      "write_char_uuid": "0000FFF3-0000-1000-8000-00805F9B34FB",
-      "notify_char_uuid": "0000FFF4-0000-1000-8000-00805F9B34FB"
-    },
-    {
-      "name": "Bedroom Lamp",
-      "address": "YY:YY:YY:YY:YY:YY",
-      "service_uuid": "0000FFF0-0000-1000-8000-00805F9B34FB",
-      "write_char_uuid": "0000FFF3-0000-1000-8000-00805F9B34FB",
-      "notify_char_uuid": "0000FFF4-0000-1000-8000-00805F9B34FB"
-    }
-  ]
-}
-```
-
-### Single Device (Legacy)
-
-```json
-{
-  "name": "My Lamp",
-  "address": "XX:XX:XX:XX:XX:XX",
+  "name": "My lamp",
+  "address": "platform Bluetooth identity from a scan",
   "service_uuid": "0000FFF0-0000-1000-8000-00805F9B34FB",
   "write_char_uuid": "0000FFF3-0000-1000-8000-00805F9B34FB",
   "notify_char_uuid": "0000FFF4-0000-1000-8000-00805F9B34FB"
 }
 ```
 
-## Configuration Methods
+An address can be a platform UUID rather than a MAC address. Select the real device in the UI; placeholders are not connectable identities. Reconnection itself sends no lighting command and clears recorded control values. Status reflects successful commands in the current connection, not a full hardware readback; phone/remote changes are not tracked.
 
-### 1. Automatic (Default Locations)
-
-```python
-lamp = LotusLamp()  # Searches default locations
-```
-
-### 2. Specific Config File
-
-```python
-lamp = LotusLamp(config_path="my_config.json")
-```
-
-**Error if file not found:**
-```
-FileNotFoundError: Configuration file not found: my_config.json
-Please check the path or run: python -m lotus_lamp.setup
-```
-
-### 3. Specific Device by Name
-
-```python
-lamp = LotusLamp(device_name="Living Room Lamp")
-```
-
-**Error if device not found:**
-```
-ValueError: Device 'Living Room Lamp' not found in configuration.
-Available devices: Bedroom Lamp, Office Lamp
-
-Please run the setup wizard to configure your device:
-    python -m lotus_lamp.setup
-```
-
-### 4. Explicit Config Object
-
-```python
-from lotus_lamp import DeviceConfig
-
-config = DeviceConfig(
-    name="My Lamp",
-    address="XX:XX:XX:XX:XX:XX",
-    service_uuid="0000FFF0-0000-1000-8000-00805F9B34FB",
-    write_char_uuid="0000FFF3-0000-1000-8000-00805F9B34FB",
-    notify_char_uuid="0000FFF4-0000-1000-8000-00805F9B34FB"
-)
-
-lamp = LotusLamp(device_config=config)
-```
-
-## Project-Specific Configurations
-
-Create a `lotus_lamp_config.json` in your project directory:
-
-```
-my_project/
-  ├── lotus_lamp_config.json  # Project-specific config
-  ├── main.py
-  └── ...
-```
-
-This will be loaded instead of your global config when running from that directory.
-
-**Benefits:**
-- Different lamps for different projects
-- Version control your config
-- Easy sharing with team members
-- Override global settings
-
-## Managing Multiple Devices
-
-### Setup Multiple Devices
-
-```bash
-# Configure first device
-python -m lotus_lamp.setup
-
-# Configure second device (adds to existing config)
-python -m lotus_lamp.setup
-
-# Configure third device
-python -m lotus_lamp.setup
-```
-
-### Use Different Devices
-
-```python
-# Default (first device in config)
-lamp = LotusLamp()
-
-# Specific device
-lamp1 = LotusLamp(device_name="Living Room Lamp")
-lamp2 = LotusLamp(device_name="Bedroom Lamp")
-```
-
-### List Available Devices
-
-```python
-from lotus_lamp import ConfigManager
-
-# Use default config file
-manager = ConfigManager()
-
-# Specify config file
-manager = ConfigManager(config_path="my_config.json")
-
-devices = manager.list_devices()
-print(f"Available devices: {devices}")
-```
-
-## Troubleshooting
-
-### "Configuration file not found"
-
-**Cause:** Specified path doesn't exist
-
-**Solution:**
-```python
-# Check the path
-from pathlib import Path
-print(Path("my_config.json").absolute())
-
-# Or use default locations
-lamp = LotusLamp()  # Don't specify path
-```
-
-### "No devices found in config file"
-
-**Cause:** Config file is empty or malformed
-
-**Solution:**
-1. Check JSON syntax
-2. Ensure `devices` array exists
-3. Verify required fields (name, service_uuid, etc.)
-
-### Config Loaded from Wrong Location
-
-**Problem:** Not sure which config is being used
-
-**Solution:**
-```python
-# Enable verbose mode to see
-lamp = LotusLamp(verbose=True)
-```
-
-Output will show:
-```
-Loading config from: /home/user/.lotus_lamp/config.json
-✓ Loaded 2 device(s) from: /home/user/.lotus_lamp/config.json
-Using device: My Lamp
-```
-
-### Want to Override Global Config
-
-**Solution:** Create local config file:
-```bash
-# In your project directory
-cp ~/.lotus_lamp/config.json ./lotus_lamp_config.json
-
-# Edit local version
-nano lotus_lamp_config.json
-```
-
-Now the local version will be used when running from this directory.
-
-## Advanced Configuration
-
-### Programmatic Config Management
-
-```python
-from lotus_lamp import ConfigManager, DeviceConfig
-from pathlib import Path
-
-# Create manager
-manager = ConfigManager()
-
-# Add device
-manager.add_device(DeviceConfig(
-    name="New Lamp",
-    address="AA:BB:CC:DD:EE:FF"
-))
-
-# Remove device
-manager.remove_device("Old Lamp")
-
-# List devices
-print(manager.list_devices())
-
-# Get specific device
-config = manager.get_device("New Lamp")
-
-# Save to file
-manager.save(Path("my_lamps.json"))
-```
-
-### Custom Default Locations
-
-```python
-from lotus_lamp.config import ConfigManager
-from pathlib import Path
-
-# Override default locations
-ConfigManager.DEFAULT_CONFIG_LOCATIONS = [
-    Path("/my/custom/path/config.json"),
-    Path.cwd() / "config.json",
-]
-
-# Now searches custom locations
-from lotus_lamp import LotusLamp
-lamp = LotusLamp()
-```
-
-## Environment Variables
-
-### LOTUS_LAMP_VERBOSE
-
-Enable verbose logging globally:
-
-```bash
-# Linux/Mac
-export LOTUS_LAMP_VERBOSE=1
-
-# Windows CMD
-set LOTUS_LAMP_VERBOSE=1
-
-# Windows PowerShell
-$env:LOTUS_LAMP_VERBOSE=1
-```
-
-Then all LotusLamp instances will print loading information.
-
-### Future Variables
-
-Planned environment variables:
-- `LOTUS_LAMP_CONFIG` - Override config file path
-- `LOTUS_LAMP_DEVICE` - Default device name
-- `LOTUS_LAMP_DEBUG` - Enable debug logging
-
-## Configuration Security
-
-### Don't Commit Addresses
-
-If version controlling your config, consider:
+### Preset file
 
 ```json
 {
-  "devices": [
-    {
-      "name": "My Lamp",
-      "address": null,  // Will be discovered on connection
-      "service_uuid": "0000FFF0-0000-1000-8000-00805F9B34FB",
-      "write_char_uuid": "0000FFF3-0000-1000-8000-00805F9B34FB",
-      "notify_char_uuid": "0000FFF4-0000-1000-8000-00805F9B34FB"
-    }
+  "version": 1,
+  "presets": [
+    {"id": "opaque-id", "name": "Evening", "mode": 138, "speed": 25, "pause_ms": 2000}
   ]
 }
 ```
 
-The address will be discovered and saved automatically on first connection.
+Up to 100 recipes are supported. Names contain 1–80 nonblank characters; mode is 0–212, speed is 0–100, and `pause_ms` is an integer from 0 to 600000. Missing speed in an older version-1 recipe defaults to 100; reading it does not rewrite the file. New UI captures default to 25% and remember the last chosen capture speed in that browser session.
 
-### Git Ignore
+A recipe stores elapsed time at its saved speed, not a pixel buffer or native cycle position. Brightness is not part of the recipe. There is no automatic preset execution on launch/reconnection. The app no longer uses old flow/segment drafts; browser drafts left by older versions are untouched.
 
-Add to `.gitignore`:
-```
-# Lotus Lamp configs with addresses
-.lotus_lamp.json
-lotus_lamp_config.json
-```
+## Reusable library and CLI tools
 
-Commit a template instead:
-```
-lotus_lamp_config.example.json
+This configuration is separate from the app's `.local` files. The optional wizard (`python -m lotus_lamp.setup`) helps discover a device and write a library configuration. Explicit `DeviceConfig` is equally valid; the wizard is not mandatory.
+
+```python
+from lotus_lamp import DeviceConfig, LotusLamp
+
+lamp = LotusLamp(device_config=DeviceConfig(name="My lamp", address="observed-device-identity"))
 ```
 
-## See Also
+Without `device_config` or an explicit `config_path`, `ConfigManager` selects the first existing file in this order:
 
-- [Main README](README.md) - Quick start and basic usage
-- [Testing Guide](TESTING.md) - Testing and development
-- [Protocol Documentation](docs/PROTOCOL.md) - BLE protocol details
-- [Mode Reference](docs/MODES.md) - All 213 modes documented
+1. `./lotus_lamp_config.json`
+2. `./.lotus_lamp.json`
+3. `~/.lotus_lamp/config.json`
+
+An invalid first file raises an error; it does not fall through to later files. The library accepts either a single device object or `{"devices": [...]}`. Names identify entries in the multi-device wrapper; the first entry is the default.
+
+```python
+from pathlib import Path
+from lotus_lamp import ConfigManager, LotusLamp
+
+lamp = LotusLamp(config_path="lamps.json", device_name="Living room", verbose=True)
+manager = ConfigManager(Path("lamps.json"))
+print(manager.list_devices())
+```
+
+`ConfigManager` also provides `add_device`, `remove_device`, `get_device`, `get_default_device` and `save(Path(...))`. Changes are in memory until saved. `LOTUS_LAMP_VERBOSE=1` enables library configuration/debug output. There is no implemented environment variable for overriding the app's device path; use `--config`.
+
+The library's normal connect path can perform name-based discovery; the browser app deliberately bypasses that fallback. See [development](docs/DEVELOPMENT.md) and [examples](examples/README.md). Keep real addresses, credentials and recovery archives out of commits and issue screenshots.

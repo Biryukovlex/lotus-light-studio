@@ -1,9 +1,17 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+## Local app development — 26 October 2026
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+- Added the loopback-only neon browser app and macOS launcher, with pinned runtime dependencies.
+- Added power, whole-lamp RGB, brightness, normal speed, 213-effect browsing and experimental Pause/Resume.
+- Added Default/Custom tabs and a modal to capture at a chosen speed, name/save/edit/delete timed recipes, and replay with an automatic pause.
+- Added private versioned preset storage, exact device identity checks, request protections and cancellation/error handling.
+- Documented approximate recall, illustrative previews, tested controller limits, setup and contributor checks.
+- Published project identity: Biryukovlex/lotus-light-studio. Original library package/module names remain compatible; distribution metadata remains 1.1.0.
+
+## Upstream library history
+
+The entries below describe earlier upstream releases; they do not establish full protocol coverage or hardware support for this fork.
 
 ## [1.1.0] - 2026-02-08
 
@@ -26,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Initial release
-- Complete BLE protocol implementation for Lotus Lamp devices
+- Basic BLE command implementation for Lotus Lamp devices
 - Support for 213 built-in animation modes with official names
 - RGB color control (16.7 million colors)
 - Brightness control (0-100%)
@@ -43,7 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Test suite with 94 tests
 
 ### Documentation
-- Complete BLE protocol documentation
+- BLE command documentation
 - All 213 modes documented with categories
 - Configuration guide for advanced usage
 - Testing guide

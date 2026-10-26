@@ -30,19 +30,24 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+app = ["aiohttp>=3.9,<4; python_version >= '3.9'"]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
+    "pytest-cov>=4.0",
 ]
 
+[project.scripts]
+lotus-lamp-studio = "lotus_lamp.app:main"
+
 [project.urls]
-Homepage = "https://github.com/wporter82/lotus-lamp-python"
-Documentation = "https://github.com/wporter82/lotus-lamp-python/blob/main/docs/PROTOCOL.md"
-Repository = "https://github.com/wporter82/lotus-lamp-python"
-"Bug Tracker" = "https://github.com/wporter82/lotus-lamp-python/issues"
+Homepage = "https://github.com/Biryukovlex/lotus-light-studio"
+Documentation = "https://github.com/Biryukovlex/lotus-light-studio/blob/main/docs/PROTOCOL.md"
+Repository = "https://github.com/Biryukovlex/lotus-light-studio"
+"Bug Tracker" = "https://github.com/Biryukovlex/lotus-light-studio/issues"
 
 [tool.setuptools]
 packages = ["lotus_lamp"]
 
 [tool.setuptools.package-data]
-lotus_lamp = ["data/*.json"]
+lotus_lamp = ["data/*.json", "web/*"]

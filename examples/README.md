@@ -1,215 +1,42 @@
-# Lotus Lamp Examples
+# Python library examples
 
-This directory contains example scripts demonstrating various use cases for the Lotus Lamp library.
+These optional scripts use the reusable `lotus_lamp` library. They are separate from the browser app and its `.local` device/preset files. For normal app use, follow [the app guide](../LOCAL_APP.md).
 
-## Prerequisites
+Run from the project root after installing the package. Supply a library config through the optional setup wizard or create one as described in [Configuration](../CONFIGURATION.md):
 
-**First-time setup is required!** Before running any examples:
-
-```bash
-python -m lotus_lamp.setup
+```sh
+.venv/bin/python -m pip install -e '.[app]'
+.venv/bin/python -m lotus_lamp.setup
+.venv/bin/python examples/browser.py
 ```
 
-This will scan for your lamp and save the configuration.
+Close the browser app's Bluetooth connection and the phone app before connecting a script. These examples send real lamp commands; they are not previews or ordinary tests.
 
-## Examples
+| Script | Purpose |
+| --- | --- |
+| `browser.py` | Interactive terminal browsing/control of the 213 catalog entries |
+| `animation.py` | Basic colors and animation control |
+| `discover_and_configure.py` | Discovery/configuration demonstration; the wizard is the usual helper |
+| `discover_uuids.py` | Inspect a selected device's GATT structure and suggest UUIDs |
+| `multi_device.py` | Library control of multiple named configurations with asyncio |
+| `timer.py` | Inherited timer helpers; not exposed or physically validated in the browser app |
 
-### animation.py
-**Basic lamp control with keyboard interrupt**
-
-Demonstrates:
-- Connecting to lamp
-- Setting RGB colors
-- Creating animated patterns
-- Handling keyboard interrupts
-
-```bash
-python examples/animation.py
-```
-
-### browser.py
-**Interactive mode browser**
-
-Browse and test all 213 RGB animation modes organized by category.
-
-Demonstrates:
-- Using the modes module
-- Interactive lamp control
-- Mode categories and names
-
-```bash
-python examples/browser.py
-```
-
-### discover_and_configure.py
-**Device discovery and configuration (demonstration)**
-
-NOTE: This is for learning purposes. Use `python -m lotus_lamp.setup` for actual setup.
-
-Demonstrates:
-- Using the scanner API
-- Using the advanced scanner for UUID discovery
-- Creating and saving configurations
-- Testing connections
-
-```bash
-python examples/discover_and_configure.py
-```
-
-### discover_uuids.py
-**UUID discovery example**
-
-Shows how to discover UUIDs for unknown lamp models.
-
-Demonstrates:
-- Scanning for devices
-- Reading GATT structure
-- Auto-identifying UUIDs
-- Generating configurations
-
-```bash
-python examples/discover_uuids.py
-```
-
-### multi_device.py
-**Control multiple lamps**
-
-Demonstrates controlling multiple lamps simultaneously.
-
-Prerequisites:
-- Configure multiple devices first (run setup multiple times)
-
-Demonstrates:
-- Loading multiple device configurations
-- Synchronized control
-- Independent lamp control
-- Using asyncio.gather() for parallel operations
-
-```bash
-python examples/multi_device.py
-```
-
-## Common Patterns
-
-### Basic Usage
+A minimal direct-library pattern:
 
 ```python
-from lotus_lamp import LotusLamp
 import asyncio
+from lotus_lamp import DeviceConfig, LotusLamp
 
 async def main():
-    lamp = LotusLamp()  # Loads saved configuration
-    await lamp.connect()
-
-    # Your code here
-    await lamp.set_rgb(255, 0, 0)  # Red
-
-    await lamp.disconnect()
+    lamp = LotusLamp(device_config=DeviceConfig(name="My lamp", address="observed-device-identity"))
+    try:
+        if not await lamp.connect():
+            return
+        await lamp.set_rgb(255, 0, 0)
+    finally:
+        await lamp.disconnect()
 
 asyncio.run(main())
 ```
 
-### Using a Specific Device
-
-```python
-lamp = LotusLamp(device_name="Living Room Lamp")
-await lamp.connect()
-```
-
-### Error Handling
-
-```python
-try:
-    lamp = LotusLamp()
-    await lamp.connect()
-    # ... use lamp ...
-except ValueError as e:
-    print(f"Configuration error: {e}")
-    print("Run: python -m lotus_lamp.setup")
-finally:
-    await lamp.disconnect()
-```
-
-### Multiple Devices
-
-```python
-lamp1 = LotusLamp(device_name="Living Room")
-lamp2 = LotusLamp(device_name="Bedroom")
-
-await asyncio.gather(
-    lamp1.connect(),
-    lamp2.connect()
-)
-
-# Control both simultaneously
-await asyncio.gather(
-    lamp1.set_rgb(255, 0, 0),
-    lamp2.set_rgb(0, 0, 255)
-)
-```
-
-## Troubleshooting
-
-### "No Lotus Lamp devices configured" Error
-
-Run the setup wizard:
-```bash
-python -m lotus_lamp.setup
-```
-
-### Can't Find Device
-
-1. Make sure lamp is powered on
-2. Check Bluetooth is enabled
-3. Try the advanced scanner:
-   ```bash
-   python -m lotus_lamp.advanced_scanner
-   ```
-
-### Import Errors
-
-Make sure you're running from the project root or have installed the package:
-```bash
-pip install -e .
-```
-
-## Creating Your Own Examples
-
-Template:
-
-```python
-#!/usr/bin/env python3
-"""
-Your Example Title
-
-Brief description of what this example demonstrates.
-"""
-
-import asyncio
-from lotus_lamp import LotusLamp
-
-
-async def main():
-    """Your example logic"""
-    lamp = LotusLamp()
-
-    try:
-        if not await lamp.connect():
-            print("Failed to connect")
-            return
-
-        # Your code here
-        await lamp.set_rgb(255, 0, 0)
-
-    finally:
-        await lamp.disconnect()
-
-
-if __name__ == '__main__':
-    asyncio.run(main())
-```
-
-## More Information
-
-- **Full Documentation**: See [../README.md](../README.md)
-- **Protocol Details**: See [../docs/PROTOCOL.md](../docs/PROTOCOL.md)
+Replace the placeholder with an observed platform identity. UUID discovery is a heuristic, not proof of compatibility. The library's name-based fallback differs from the app's stricter identity handling. Timer weekday conventions and behavior require hardware verification before relying on schedules; see [protocol notes](../docs/PROTOCOL.md).

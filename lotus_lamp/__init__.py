@@ -6,13 +6,17 @@ A Python library for controlling Lotus Lamp RGB LED strips via Bluetooth Low Ene
 
 Supports Lotus Lamp devices using the Lotus Lamp X app protocol.
 
-First-Time Setup:
-    Before using the library, run the setup wizard to configure your device:
+Local App:
+    Run python -m lotus_lamp.app (Python 3.11+) and scan/connect in the UI.
+    The browser app stores its device and custom presets separately from this library.
+
+Library Setup:
+    Pass DeviceConfig directly, or use the optional setup wizard:
 
     $ python -m lotus_lamp.setup
 
-    This will scan for your lamp, discover connection details, and save the configuration.
-    You only need to do this once!
+    The wizard scans, suggests connection details and saves a library configuration.
+    Discovered UUIDs do not by themselves establish controller compatibility.
 
 Basic Usage:
     >>> from lotus_lamp import LotusLamp
@@ -28,7 +32,7 @@ Basic Usage:
     >>> asyncio.run(main())
 
 Features:
-    - Auto UUID discovery for any lamp model
+    - BLE discovery and GATT inspection for compatible controllers
     - RGB color control (16.7 million colors)
     - 213 built-in animation modes
     - Brightness control (0-100%)
@@ -41,7 +45,7 @@ Author: Wayne Porter
 License: MIT
 """
 
-__version__ = "1.0.1"
+__version__ = "1.1.0"
 __author__ = "Wayne Porter"
 __license__ = "MIT"
 

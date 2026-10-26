@@ -1,520 +1,63 @@
-# Lotus Lamp RGB LED - Complete BLE Protocol Documentation
+# BLE protocol reference
 
-**Device:** MELK-OA10 5F (Tyute-branded RGB LED Lamp)
-**App:** Lotus Lamp X (com.szelk.ledlamppro)
-**Protocol:** Fully reverse-engineered and tested
-**Date:** February 2026
+This reference describes packets emitted by the current Python library and the subset verified for Lotus Light Studio. It is not a complete firmware specification. The upstream work targeted MELK-OA10 5F; app investigation used a Tyute SSG-500 advertising as MELK-OA10 65. Compatibility cannot be inferred from a matching name or UUID alone.
 
----
+## Transport and state
 
-## Table of Contents
-1. [BLE Connection Details](#ble-connection-details)
-2. [Command Format](#command-format)
-3. [All Commands](#all-commands)
-4. [RGB Color Control](#rgb-color-control)
-5. [Python Examples](#python-examples)
+Common GATT identifiers are service `FFF0`, write/read characteristic `FFF3` and notify characteristic `FFF4`, expanded in the Bluetooth base UUID as `0000FFF0-0000-1000-8000-00805F9B34FB` etc. The app verifies the selected device's configured service and write-without-response property before writes. It pins the observed platform identity rather than substituting a matching advertised name.
 
----
+Close other BLE controllers before connecting. Commands use `response=False`; completion means host submission, not an acknowledgement of physical light output. The browser status contains successful controls from this connection, not a full hardware snapshot. Reconnect does not replay controls.
 
-## BLE Connection Details
+## Basic controls used by the app
 
-### Device Information
-```
-Device Name:    MELK-OA10   5F
-                (Note: There are spaces in the name)
+These frames are nine bytes. Values are hexadecimal; `XX`, `RR`, `GG`, `BB` are single bytes. The second byte is command-specific, not the total wire length.
 
-Service UUID:   0000FFF0-0000-1000-8000-00805F9B34FB
-Write Char:     0000FFF3-0000-1000-8000-00805F9B34FB (WRITE NO RESPONSE)
-Notify Char:    0000FFF4-0000-1000-8000-00805F9B34FB (NOTIFY)
-```
+| Control | Packet | Input |
+| --- | --- | --- |
+| Solid RGB | `7e 07 05 03 RR GG BB 10 ef` | Each color channel 0–255 |
+| Brightness | `7e 07 01 XX ff ff ff 00 ef` | 0–100 |
+| Normal speed | `7e 04 02 XX ff ff ff 00 ef` | 0–100 |
+| Built-in effect | `7e 07 03 XX ff ff ff 00 ef` | Catalog ID 0–212 |
+| Power on | `7e 07 04 01 00 ff ff 00 ef` | — |
+| Power off | `7e 07 04 00 00 ff ff 00 ef` | — |
+| Experimental frame hold | `7e 04 02 80 ff ff ff 00 ef` | Raw speed 128, separate from normal slider |
 
-### Connection Notes
-- The lamp accepts **only ONE** BLE connection at a time
-- Connecting with a new client disconnects previous connections
-- No authentication or pairing required
-- Commands use "Write Without Response" (GATT opcode 0x52)
+The app validates strict integer ranges/booleans before writes. The reusable library generally clamps normal numeric controls. RGB is whole-lamp color, not a per-pixel command. Program 0 is Auto Play. See [the catalog](MODES.md) for all names and IDs.
 
----
+The library normally waits 100 ms after writes and 500 ms after power changes. Timed replay uses optional zero cooldown on mode and hold so a target below 100 ms is not silently delayed by the default cooldown. These are host scheduling choices, not measured firmware processing guarantees.
 
-## Command Format
+## Pause and timed frame presets
 
-**IMPORTANT:** All commands are **9 bytes** (not 8)!
+Raw speed 128 physically held program 138 on the SSG-500 for over a minute; normal speed 0 resumed it. Speed 0 still moves slowly. Raw 255 did not pause the tested effect. Other programs/controllers and indefinite duration have not been established.
 
-```
-┌─────────┬──────────┬──────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┐
-│  Header │ Protocol │ Command  │ Param 1 │ Param 2 │ Param 3 │ Param 4 │ Fixed   │ Footer  │
-│   0x7E  │   Len    │   Type   │         │         │         │         │  0x00   │  0xEF   │
-└─────────┴──────────┴──────────┴─────────┴─────────┴─────────┴─────────┴─────────┴─────────┘
-  Byte 0     Byte 1     Byte 2    Byte 3    Byte 4    Byte 5    Byte 6    Byte 7    Byte 8
-```
+A custom preset stores mode, normal speed and elapsed milliseconds. Capture/replay performs BLE off/on, solid black, saved speed, selected mode, then raw-128 hold after the monotonic deadline. BLE off/on is not an electrical reset or a verified loop-zero reset. The clock starts at the host's mode-write submission; the lamp does not report its internal phase.
 
-**Critical Notes:**
-- All commands are **9 bytes total** (verified from app source code)
-- All commands start with `7E` (header)
-- All commands end with `EF` (footer) at position 8
-- **Byte 7 is always `00`**
-- Byte 1 (Protocol Length) varies by command type:
-  - BRIGHTNESS: `07`
-  - SPEED: `04` ⚠️
-  - MODE: `06` or `07` (depends on parameters)
-  - COLOR: `07`
-  - ON_OFF: `07`
-- Byte 2 is the command type (1-6)
-- Bytes 3-6 are parameters (command-specific)
-- **Unused parameter bytes MUST be `FF` (not `00`)** ⚠️
-- All values are in hexadecimal
+Repeated closely timed replays produced shifted frames, including after off/on. Recipes are therefore approximate, not framebuffer snapshots or exact positions within a native cycle. No measured cycle period, reset-counter or seek-frame command is implemented. The UI illustration is separate from native lamp rendering.
 
----
+## Library-only timer helpers
 
-## All Commands
+These inherited helpers are not present in the browser UI or its command API, and have not been physically validated on the SSG-500:
 
-### 1. RGB Color Control ⭐
+| Method | Packet |
+| --- | --- |
+| `sync_time()` | `7e 06 83 HH MM SS WW 00 ef` |
+| `set_timer_on(hour, minute, days)` | `7e 07 82 HH MM 00 00 MASK ef` |
+| `set_timer_off(hour, minute, days)` | `7e 07 82 HH MM 00 01 MASK ef` |
+| `disable_timer_on()` | `7e 07 82 00 00 00 00 00 ef` |
+| `disable_timer_off()` | `7e 07 82 00 00 00 01 00 ef` |
 
-**FULLY WORKING - Tested and confirmed!**
+Current code emits `WW = datetime.now().weekday() + 1` (Monday 1 through Sunday 7). Its repeat mask starts with `0x80`, adding Monday bit 0 through Sunday bit 6; unknown day names add nothing. `days=None` or `[]` emits `0x80`. Hour/minute inputs are clamped to 0–23/0–59.
 
-```
-Command Format: 7E 07 05 03 RR GG BB 10 EF
+Earlier upstream comments described a different native weekday convention. The emitted values above document current code; the intended firmware semantics and one-shot/repeat behavior need hardware validation. Do not present these as verified schedules or enable them in the UI without that work.
 
-Where:
-  07 = Protocol length
-  05 = COLOR command type
-  03 = Color mode parameter
-  RR = Red value (00-FF / 0-255)
-  GG = Green value (00-FF / 0-255)
-  BB = Blue value (00-FF / 0-255)
-  10 = Mode flag (16 decimal)
-```
+## Readback and unsupported paths
 
-**Examples:**
-```
-Red:     7E 07 05 03 FF 00 00 10 EF
-Green:   7E 07 05 03 00 FF 00 10 EF
-Blue:    7E 07 05 03 00 00 FF 10 EF
-White:   7E 07 05 03 FF FF FF 10 EF
-Yellow:  7E 07 05 03 FF FF 00 10 EF
-Cyan:    7E 07 05 03 00 FF FF 10 EF
-Magenta: 7E 07 05 03 FF 00 FF 10 EF
-Orange:  7E 07 05 03 FF A5 00 10 EF
-Purple:  7E 07 05 03 80 00 80 10 EF
-Black:   7E 07 05 03 00 00 00 10 EF (LEDs off)
-```
+Lower-level trials verified legacy readback for brightness, speed and logical node counts. The normal app does not consume those packets. Reported counts 20/40 were not established as physical LED package counts. Raw RGB pixels, complete controller state, factory defaults and firmware flash have not been read out.
 
----
+Native DIY RGB scene uploads, palette previews, RGB565 uploads and range-based color retention were tested without establishing arbitrary spatial control. Shrinking the output range turned the excluded tail off, so it could not accumulate differently colored segments. The unsupported editors were removed; `/api/flow` and `/api/segments` reject requests without sending BLE data.
 
-### 2. Brightness Control
+No firmware dump/update/recovery path is verified. Historical recovery archives contain local project/settings data, not a restorable firmware image. Native app files and private research artifacts are not distributed here.
 
-**WORKING - Tested and confirmed!**
+Commands beginning `7e 00 05 ...` or `7e 00 06 ...` previously hung the controller and required an electrical power cycle. They must not be used as reset/pause commands. Other packet families can have different lengths and framing; the nine-byte rule applies to the basic controls above, not every command recovered from Android.
 
-```
-Command Format: 7E 07 01 XX FF FF FF 00 EF
-
-Where:
-  07 = Protocol length
-  01 = BRIGHTNESS command type
-  XX = Brightness level (00-64 hex / 0-100 decimal)
-  FF FF FF = Unused parameter bytes (MUST be FF!)
-  00 = Fixed byte 7
-  EF = Footer
-```
-
-**Examples:**
-```
-100% brightness: 7E 07 01 64 FF FF FF 00 EF
-75%  brightness: 7E 07 01 4B FF FF FF 00 EF
-50%  brightness: 7E 07 01 32 FF FF FF 00 EF
-25%  brightness: 7E 07 01 19 FF FF FF 00 EF
-0%   brightness: 7E 07 01 00 FF FF FF 00 EF
-```
-
-**Notes:**
-- Brightness affects current color/animation
-- Does NOT change the current mode
-- Changes take effect immediately
-
----
-
-### 3. Speed Control
-
-**WORKING - Tested and confirmed!**
-
-```
-Command Format: 7E 04 02 XX FF FF FF 00 EF
-
-Where:
-  04 = Protocol length (⚠️ Different from other commands!)
-  02 = SPEED command type
-  XX = Speed level (00-64 hex / 0-100 decimal)
-  FF FF FF = Unused parameter bytes (MUST be FF!)
-  00 = Fixed byte 7
-  EF = Footer
-```
-
-**Examples:**
-```
-Fastest: 7E 04 02 64 FF FF FF 00 EF  (100%)
-Fast:    7E 04 02 50 FF FF FF 00 EF  (80%)
-Medium:  7E 04 02 32 FF FF FF 00 EF  (50%)
-Slow:    7E 04 02 14 FF FF FF 00 EF  (20%)
-Slowest: 7E 04 02 00 FF FF FF 00 EF  (0%)
-```
-
-**Notes:**
-- ⚠️ **Protocol length is 04, not 07!**
-- Speed affects animation playback rate
-- Does NOT restart the current animation
-- **No effect on solid colors (RGB mode)** - only works with animations!
-
----
-
-### 4. Animation Modes (RGB Effect Modes)
-
-**FULLY DOCUMENTED - 213 modes organized into 8 categories!**
-
-```
-Command Format: 7E 07 03 XX FF FF FF 00 EF
-
-Where:
-  07 = Protocol length
-  03 = MODE/ANIMATION command type
-  XX = Animation mode (00-D4 hex / 0-212 decimal)
-  FF FF FF = Unused parameter bytes (MUST be FF!)
-  00 = Fixed byte 7
-  EF = Footer
-```
-
-**Mode Organization:**
-All 213 modes are organized into 8 categories as shown in the Lotus Lamp X app:
-
-| Category | Modes | Description |
-|----------|-------|-------------|
-| **basic** | 47 modes (0-2, 77-88, 181-212) | Auto cycle, magic colors, jumps, gradients, strobes |
-| **trans** | 20 modes (3-22) | Light/dark transitions |
-| **tail** | 16 modes (23-38) | Comet/tailing effects |
-| **water** | 18 modes (39-56) | Running water patterns |
-| **curtain** | 20 modes (57-76) | Opening/closing effects |
-| **run** | 34 modes (89-141 odd, 167-179 odd) | Forward running (7-color in various backgrounds) |
-| **runback** | 34 modes (90-142 even, 168-180 even) | Backward running (7-color in various backgrounds) |
-| **flow** | 24 modes (143-166) | White-to-color-to-white breathing effects |
-
-**See:** `LAMP_MODES_BY_CATEGORY.md` for complete mode listings and descriptions
-
-⚠️ **Important:** These mode numbers are specific to MELK-OA10 5F hardware. Other lamp models may use different mappings.
-
-**Examples:**
-```
-Animation 1:   7E 07 03 01 FF FF FF 00 EF
-Animation 10:  7E 07 03 0A FF FF FF 00 EF
-Animation 100: 7E 07 03 64 FF FF FF 00 EF
-Special fade:  7E 07 03 FF FF FF FF 00 EF
-```
-
-**Notes:**
-- Over 200 different animation modes available
-- Some modes are color-specific (red, green, blue variants)
-- Each mode has its own pattern and timing
-- Mode is retained even when brightness/speed changes
-
-**Examples:**
-```
-Mode 0   (0x00): 7E 07 03 00 FF FF FF 00 EF  # Auto play
-Mode 138 (0x8A): 7E 07 03 8A FF FF FF 00 EF  # 7-color cyan run back
-Mode 143 (0x8F): 7E 07 03 8F FF FF FF 00 EF  # W-R-W flow
-```
-
-**Python Usage:**
-```python
-await lamp.set_animation(0)    # Auto play
-await lamp.set_animation(138)  # 7-color cyan run back
-await lamp.set_animation(143)  # W-R-W flow
-
-# Or by category
-from lamp_mode_categories import get_mode_by_category_index
-mode = get_mode_by_category_index('flow', 1)  # First flow mode (143)
-await lamp.set_animation(mode)
-```
-
-**Tools:**
-- `lamp_browser.py` - Interactive mode browser to test all 213 modes
-- `lamp_mode_categories.py` - Python module for category-based mode access
-- `LAMP_MODES_BY_CATEGORY.md` - Complete reference documentation
-
----
-
-## RGB Color Control (Detailed)
-
-### Setting Arbitrary RGB Colors
-
-The RGB command format allows setting **any RGB color** from 0-255 per channel:
-
-```python
-def set_rgb(r, g, b):
-    """Set lamp to specific RGB color"""
-    command = bytes([
-        0x7E,           # Header
-        0x07,           # Protocol length
-        0x05,           # COLOR command
-        0x03,           # Mode parameter
-        r,              # Red (0-255)
-        g,              # Green (0-255)
-        b,              # Blue (0-255)
-        0x10,           # Mode flag
-        0xEF            # Footer
-    ])
-    # Send via BLE to characteristic 0xFFF3
-```
-
-### Color Space
-
-- **Range:** 0-255 per channel (standard 24-bit RGB)
-- **Total Colors:** 16,777,216 possible colors (256³)
-- **Gamma:** Appears to be linear (no gamma correction)
-
-### Performance
-
-- **Update Rate:** ~10 Hz maximum (100ms between commands)
-- **Response Time:** < 100ms typical
-- **Smooth Transitions:** Not built-in, must be implemented client-side
-
----
-
-## Python Examples
-
-### Basic Connection and Color Setting
-
-```python
-import asyncio
-from bleak import BleakClient
-
-DEVICE_NAME = "MELK-OA10   5F"
-WRITE_CHAR = "0000FFF3-0000-1000-8000-00805F9B34FB"
-
-async def set_color(r, g, b):
-    async with BleakClient(DEVICE_NAME) as client:
-        cmd = bytes([0x7E, 0x07, 0x05, 0x03, r, g, b, 0x10, 0xEF])
-        await client.write_gatt_char(WRITE_CHAR, cmd, response=False)
-
-# Usage
-asyncio.run(set_color(255, 0, 0))  # Red
-```
-
-### Full Controller Class
-
-Use the `lotus_lamp` package for a complete implementation:
-
-```python
-from lotus_lamp import LotusLamp
-
-lamp = LotusLamp()
-await lamp.connect()
-await lamp.set_rgb(255, 0, 0)
-await lamp.set_animation(143)
-await lamp.set_brightness(75)
-await lamp.disconnect()
-```
-
-Features:
-- RGB color control
-- Brightness and speed adjustment
-- 213 animation modes with official names
-- Mode search and lookup
-- Interactive browser tool
-
----
-
-## Command Discovery Process
-
-This protocol was fully reverse-engineered through:
-
-1. **Bluetooth Sniffing:** Attempted but packets were truncated
-2. **Systematic Testing:** 200+ command variations tested
-3. **APK Decompilation:** Final breakthrough
-   - Decompiled Lotus Lamp X app (com.szelk.ledlamppro)
-   - Found E1Achieve.java with complete protocol implementation
-   - Extracted exact command formats
-   - Confirmed with live testing
-
----
-
-## Important Notes
-
-### Unstable Commands (DO NOT USE)
-```
-7E 00 05 XX ... - Causes lamp freeze/hang
-7E 00 06 XX ... - Causes lamp freeze/hang
-```
-
-These command types cause the lamp to become unresponsive and require power cycling.
-
-### Timing Recommendations
-- **Minimum delay between commands:** 50ms
-- **Recommended delay:** 100-200ms
-- **Maximum safe rate:** ~10 commands/second
-
-### Connection Behavior
-- Lamp disconnects from app when another device connects
-- No graceful disconnect notification
-- Reconnection is fast (< 1 second)
-
----
-
-## Hardware Details
-
-### LED Strip Specifications
-- Type: RGB (no separate white channel in this model)
-- Control: Single-zone (all LEDs same color)
-- Length: Varies by model
-- Power: USB-powered (5V)
-
-### Remote Control
-- IR remote control also supported
-- BLE and IR operate independently
-- Commands do NOT conflict
-
----
-
----
-
-### 5. Timer/Scheduling
-
-**IMPLEMENTED - Protocol decoded from APK decompilation + behavioral testing.**
-
-The lamp handles scheduling internally (lamp-side). The app sends the current time to
-the lamp first, then sends timer configuration. No phone needed after setup.
-
-#### Protocol Format
-
-Timer commands use the **standard E1Achieve format** (same 9-byte structure as all
-other commands). They do NOT use a special timer format.
-
-```
-┌─────────┬──────────┬──────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┐
-│  Header │ Protocol │ Command  │ Param 1 │ Param 2 │ Param 3 │ Param 4 │ Fixed   │ Footer  │
-│   0x7E  │   Len    │   Type   │         │         │         │         │  0x00   │  0xEF   │
-└─────────┴──────────┴──────────┴─────────┴─────────┴─────────┴─────────┴─────────┴─────────┘
-  Byte 0     Byte 1     Byte 2    Byte 3    Byte 4    Byte 5    Byte 6    Byte 7    Byte 8
-```
-
-**Important:** E1Achieve fills 5 parameter slots (positions 3-7).
-The 5th param overwrites the normally-fixed 0x00 at position 7.
-
-#### Step 1: Sync Current Time
-
-```
-Command Format: 7E 06 83 HH MM SS WW 00 EF
-
-Where:
-  06 = Protocol length (DATA_TIME-specific value)
-  83 = DATA_TIME command type
-  HH = Current hour (00-17 hex / 0-23 decimal)
-  MM = Current minute (00-3B hex / 0-59 decimal)
-  SS = Current second (00-3B hex / 0-59 decimal)
-  WW = Day of week (1-7, where 1=Monday...7=Sunday)
-  00 = Fixed byte 7
-  EF = Footer
-```
-
-**Note:** Weekday values 1-7 correspond directly to bitmask bits 0-6:
-- Python's `weekday() + 1` gives Mon=1, Tue=2, ..., Sun=7
-- This directly maps to timer bitmask bits: Mon=0x01, Tue=0x02, ..., Sun=0x40
-
-#### Step 2: Set Timer
-
-```
-Command Format: 7E 07 82 HH MM 00 TT BB EF
-
-Where:
-  07 = Protocol length
-  82 = TIMER_SWITCH command type
-  HH = Timer hour (00-17 hex / 0-23 decimal)
-  MM = Timer minute (00-3B hex / 0-59 decimal)
-  00 = Padding byte (always 0x00)
-  TT = Timer type (00 = ON, 01 = OFF)
-  BB = Week bitmask (bit 7=enabled, bits 0-6=day flags)
-  EF = Footer
-```
-
-**Week Bitmask:**
-
-The bitmask bits correspond to sync_time weekday values:
-
-| Bit | Value | Day | sync_time WW value |
-|-----|-------|-----|-------------------|
-| 0 | 0x01 | Monday | 0x01 |
-| 1 | 0x02 | Tuesday | 0x02 |
-| 2 | 0x04 | Wednesday | 0x03 |
-| 3 | 0x08 | Thursday | 0x04 |
-| 4 | 0x10 | Friday | 0x05 |
-| 5 | 0x20 | Saturday | 0x06 |
-| 6 | 0x40 | Sunday | 0x07 |
-| 7 | 0x80 | Timer enabled | - |
-
-**Examples:**
-```
-Sync time (Mon 07:30:00):  7E 06 83 07 1E 00 01 00 EF  (WW=0x01 for Monday)
-Sync time (Sat 07:30:00):  7E 06 83 07 1E 00 06 00 EF  (WW=0x06 for Saturday)
-Sync time (Sun 07:30:00):  7E 06 83 07 1E 00 07 00 EF  (WW=0x07 for Sunday)
-ON timer at 07:30:         7E 07 82 07 1E 00 00 80 EF  (0x80 = enabled, no days)
-OFF timer at 23:00:        7E 07 82 17 00 00 01 80 EF
-ON timer Mon-Fri 07:30:    7E 07 82 07 1E 00 00 9F EF  (0x80|0x1F = Mon-Fri bits 0-4)
-ON timer Sat only:         7E 07 82 07 1E 00 00 A0 EF  (0x80|0x20 = Saturday bit 5)
-ON timer Sun only:         7E 07 82 07 1E 00 00 C0 EF  (0x80|0x40 = Sunday bit 6)
-Disable ON timer:          7E 07 82 00 00 00 00 00 EF  (bitmask=0x00 = disabled)
-Disable OFF timer:         7E 07 82 00 00 00 01 00 EF
-```
-
-**Python Usage:**
-```python
-# Sync time, then set schedule
-await lamp.sync_time()
-await lamp.set_timer_on(7, 30)
-await lamp.set_timer_off(23, 0)
-
-# Disable timers
-await lamp.disable_timer_on()
-await lamp.disable_timer_off()
-```
-
-**Notes:**
-- Always call `sync_time()` before setting timers (lamp has no real-time clock)
-- The weekday in `sync_time()` must match the bitmask bit values (WW=1 → bit 0, WW=2 → bit 1, etc.)
-- Timer survives brief power loss but NOT extended disconnection (30+ seconds)
-- ON and OFF timers are independent
-- One-shot timers (bitmask=0x80 with no day bits) fire once then must be re-set
-- Repeating timers (bitmask with day bits set) fire on specified days of week
-- Tested and verified: Mon-Sun all work correctly with proper weekday/bitmask mapping
-
----
-
-## Future Exploration
-
-### Unknown Parameters
-- Byte 3 in RGB command (currently `03`) - purpose unknown
-- Byte 7 in RGB command (currently `10`) - purpose unknown
-- Protocol length variations - not all documented
-
-### Potential Features
-- Individual LED control (if supported)
-- Custom animation creation
-- Music synchronization parameters
-
----
-
-## Credits
-
-Protocol reverse-engineered by analyzing:
-- Lotus Lamp X Android app (com.szelk.ledlamppro)
-- Live BLE packet capture and testing
-- Systematic command exploration
-
----
-
-## License
-
-This documentation is provided for educational and interoperability purposes.
-
-**No warranty provided - use at your own risk.**
-
----
-
-**Last Updated:** February 4, 2026
-**Status:** Complete RGB protocol documented and tested
+Exact trial formats, readback fields and observed outcomes are preserved in [the controller investigation](CUSTOM_CONTROL_INVESTIGATION.md). The implementation is [controller.py](../lotus_lamp/controller.py); local HTTP/API behavior is in [Development](DEVELOPMENT.md).

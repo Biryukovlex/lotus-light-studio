@@ -19,10 +19,10 @@ setup(
     description="Python library for controlling Lotus Lamp RGB LED strips via Bluetooth",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/wporter82/lotus-lamp-python",
+    url="https://github.com/Biryukovlex/lotus-light-studio",
     packages=find_packages(),
     package_data={
-        'lotus_lamp': ['data/*.json'],
+        'lotus_lamp': ['data/*.json', 'web/*'],
     },
     include_package_data=True,
     classifiers=[
@@ -44,20 +44,23 @@ setup(
         "bleak>=0.21.0",
     ],
     extras_require={
+        'app': ["aiohttp>=3.9,<4; python_version >= '3.9'"],
         'dev': [
             'pytest>=7.0',
             'pytest-asyncio>=0.21',
+            'pytest-cov>=4.0',
         ],
     },
     entry_points={
         'console_scripts': [
+            'lotus-lamp-studio=lotus_lamp.app:main',
             'lotus-lamp-browser=examples.browser:main',
         ],
     },
     keywords="bluetooth ble led rgb lamp lotus smart-home",
     project_urls={
-        "Bug Reports": "https://github.com/wporter82/lotus-lamp-python/issues",
-        "Source": "https://github.com/wporter82/lotus-lamp-python",
-        "Documentation": "https://github.com/wporter82/lotus-lamp-python/blob/main/docs/PROTOCOL.md",
+        "Bug Reports": "https://github.com/Biryukovlex/lotus-light-studio/issues",
+        "Source": "https://github.com/Biryukovlex/lotus-light-studio",
+        "Documentation": "https://github.com/Biryukovlex/lotus-light-studio/blob/main/docs/PROTOCOL.md",
     },
 )

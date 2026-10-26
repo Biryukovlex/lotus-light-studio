@@ -8,6 +8,7 @@ include DOCUMENTATION.md
 
 # Include package data
 recursive-include lotus_lamp/data *.json
+recursive-include lotus_lamp/web *
 
 # Include examples
 recursive-include examples *.py

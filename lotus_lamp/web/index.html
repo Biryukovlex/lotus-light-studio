@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#090611" />
+    <title>Lotus · Lamp control</title>
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/assets/style.css" />
+    <script src="/assets/app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="app-header">
+        <a class="brand" href="/">lotus<span> / lamp control</span></a>
+        <div class="connection-summary">
+          <span id="connection-state" class="status">Disconnected</span>
+          <button id="reconnect" class="button button-small" hidden>Connect</button>
+          <details class="connection-tools">
+            <summary aria-label="Connection settings">Connection</summary>
+            <section aria-label="Bluetooth connection">
+              <h2 id="device-name">Choose your lamp</h2>
+              <p id="device-detail">Power it on and close its phone app.</p>
+              <div class="connection-actions">
+                <button id="scan" class="button button-small">Scan for lamps</button>
+                <button id="disconnect" class="text-button" hidden>Disconnect</button>
+              </div>
+              <div id="devices" aria-live="polite"></div>
+            </section>
+          </details>
+        </div>
+      </header>
+      <main>
+        <div class="page-title"><h1>Light studio</h1></div>
+        <div id="message" role="status" aria-live="polite"></div>
+        <fieldset id="essentials" disabled>
+          <legend class="sr-only">Lamp controls</legend>
+          <div class="control-layout">
+            <section class="playback-panel" aria-labelledby="animation-title">
+              <div class="section-heading">
+                <h2 id="animation-title">Animation</h2>
+                <span id="playback-state" class="playback-state">Ready</span>
+              </div>
+              <div class="playback-stage">
+                <div class="regime-visual">
+                  <canvas id="regime-preview" width="320" height="220" aria-label="Illustrated effect preview"></canvas>
+                  <span class="preview-caption">Illustrated preview</span>
+                </div>
+                <button id="toggle-playback" class="playback-button" aria-label="Pause animation" aria-pressed="false">
+                  <span class="transport-disc" aria-hidden="true"><span class="transport-icon"></span></span>
+                  <span id="playback-label">Pause</span>
+                </button>
+              </div>
+              <div class="effect-controls">
+                <label for="effect">Selected effect</label>
+                <select id="effect"></select>
+                <button id="apply-effect" class="button button-accent">Apply effect</button>
+              </div>
+            </section>
+            <div class="settings-panel">
+              <section class="light-settings" aria-labelledby="light-title">
+                <div class="section-heading">
+                  <h2 id="light-title">Light</h2>
+                  <div class="power" role="group" aria-label="Power">
+                    <button id="power-on" class="power-button">On</button>
+                    <button id="power-off" class="power-button">Off</button>
+                  </div>
+                </div>
+                <div class="range-control">
+                  <label for="brightness">Brightness <output id="brightness-value">75%</output></label>
+                  <input id="brightness" type="range" min="0" max="100" value="75" />
+                  <div class="range-ends" aria-hidden="true"><span>Dim</span><span>Bright</span></div>
+                </div>
+                <div class="range-control">
+                  <label for="effect-speed">Speed <output id="effect-speed-value">25%</output></label>
+                  <input id="effect-speed" type="range" min="0" max="100" value="25" />
+                  <div class="range-ends" aria-hidden="true"><span>Slow</span><span>Fast</span></div>
+                </div>
+              </section>
+              <section class="color-settings" aria-labelledby="color-title">
+                <h2 id="color-title">Solid color</h2>
+                <div class="color-control">
+                  <label for="solid" class="color-picker">
+                    <input id="solid" type="color" value="#82cba8" />
+                    <span class="sr-only">Whole-lamp color</span>
+                  </label>
+                  <div class="color-caption"><span>Whole lamp</span><output id="solid-value">#82CBA8</output></div>
+                  <button id="apply-solid" class="button">Apply</button>
+                </div>
+              </section>
+            </div>
+          </div>
+        </fieldset>
+        <section class="catalog" aria-labelledby="catalog-title">
+          <div class="catalog-heading">
+            <div><h2 id="catalog-title">Presets</h2></div>
+            <button id="add-custom-preset" class="button button-small">+ Add custom preset</button>
+          </div>
+          <div class="preset-tabs" role="tablist" aria-label="Preset library">
+            <button id="tab-default" role="tab" aria-selected="true" aria-controls="default-presets" tabindex="0">Default</button>
+            <button id="tab-custom" role="tab" aria-selected="false" aria-controls="custom-presets" tabindex="-1">Custom <span id="preset-count">0</span></button>
+          </div>
+          <div id="default-presets" role="tabpanel" aria-labelledby="tab-default">
+            <div class="catalog-search">
+              <label class="sr-only" for="effect-search">Search effects</label>
+              <input id="effect-search" type="search" placeholder="Search by name, color or number" autocomplete="off" />
+              <span id="effect-count" class="catalog-count"></span>
+            </div>
+            <div id="effect-categories" class="category-filters" role="group" aria-label="Effect category"></div>
+            <div id="effect-grid" class="effect-grid" aria-label="Built-in programs"></div>
+            <button id="more-effects" class="button catalog-more" hidden>Show more effects</button>
+            <p class="catalog-note">Animations illustrate each effect family. The lamp renders its own fixed patterns and colors.</p>
+          </div>
+          <div id="custom-presets" role="tabpanel" aria-labelledby="tab-custom" hidden>
+            <div class="custom-heading"><span class="approximate-badge">Approximate recall</span></div>
+            <div id="preset-list" class="preset-list" aria-label="Saved frame presets"></div>
+          </div>
+        </section>
+      </main>
+      <dialog id="preset-dialog" class="preset-dialog" aria-labelledby="preset-dialog-title" aria-describedby="preset-dialog-description">
+        <div class="dialog-heading"><h2 id="preset-dialog-title">Add custom preset</h2><button id="close-preset-dialog" class="dialog-close" aria-label="Close preset editor">×</button></div>
+        <p id="preset-dialog-description">Choose an effect and speed, then capture a frame.</p>
+        <div id="preset-message" role="status" aria-live="polite"></div>
+        <div class="capture-selection">
+          <div><label for="capture-effect">Effect to capture</label><select id="capture-effect"></select></div>
+          <div class="range-control"><label for="capture-speed">Capture speed <output id="capture-speed-value">25%</output></label><input id="capture-speed" type="range" min="0" max="100" value="25" /><div class="range-ends" aria-hidden="true"><span>Slow</span><span>Fast</span></div></div>
+        </div>
+        <div class="dialog-stage">
+          <div class="regime-visual"><canvas id="capture-preview" width="240" height="180" aria-label="Illustrated capture effect preview"></canvas><span class="preview-caption">Illustrated preview</span></div>
+          <button id="capture-pause" class="playback-button capture-pause" disabled aria-label="Pause capture"><span class="transport-disc" aria-hidden="true"><span class="transport-icon"></span></span><span id="capture-pause-label">Pause</span></button>
+        </div>
+        <div class="capture-bar">
+          <button id="start-capture" class="button">Start capture</button>
+          <div class="capture-readout"><output id="capture-time">0.000 s</output><span id="capture-state">Ready when you are</span></div>
+        </div>
+        <form id="preset-form" class="preset-form">
+            <div><label for="preset-name">Preset name</label><input id="preset-name" type="text" maxlength="80" required placeholder="Midnight glow" autocomplete="off" /></div>
+            <div><label for="preset-time">Pause after (seconds)</label><input id="preset-time" type="number" min="0" max="600" step="0.001" placeholder="0.000" required /></div>
+            <p id="preset-program" class="preset-note"></p>
+            <div class="dialog-footer"><span class="preset-note">Approximate recall · speed saved with your preset</span><button id="cancel-preset-dialog" class="text-button" type="button">Cancel</button>
+            <button id="save-preset" class="button button-accent" type="submit">Save preset</button>
+            </div>
+        </form>
+      </dialog>
+      <footer><a href="https://github.com/Biryukovlex/lotus-light-studio" target="_blank" rel="noopener noreferrer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="6" cy="5" r="3" /><circle cx="6" cy="19" r="3" /><circle cx="18" cy="6" r="3" /><path d="M6 8v8M18 9a10 10 0 0 1-10 10" /></svg><span>Developed by biryukovlex</span></a></footer>
+    </div>
+  </body>
+</html>
