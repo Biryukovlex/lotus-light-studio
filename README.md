@@ -1,8 +1,8 @@
 # Lotus Light Studio
 
-A local Bluetooth control app for Lotus Lamp–compatible lights, with **Pause** at its heart.
+![Lotus Light Studio — Pause the glow. Save the moment.](docs/images/lotus-light-studio-promo.png)
 
-![Lotus Light Studio](docs/screenshots/studio.jpg)
+A local Bluetooth control app for Lotus Lamp–compatible lights, with **Pause** at its heart.
 
 ## What you can do
 
@@ -11,7 +11,14 @@ A local Bluetooth control app for Lotus Lamp–compatible lights, with **Pause**
 - **Pause** an effect on a frame you like, then resume it.
 - Create **Custom presets**: choose an effect and capture speed, pause, name and save. Replay automatically pauses after the saved time at the saved speed. Edit or delete recipes locally.
 
+<details>
+<summary>App screenshots</summary>
+
+![Lotus Light Studio controls](docs/screenshots/studio.jpg)
+
 ![Custom preset capture](docs/screenshots/capture.jpg)
+
+</details>
 
 ## Run on macOS
 
