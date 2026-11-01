@@ -5,6 +5,12 @@ include requirements.txt
 include CONFIGURATION.md
 include TESTING.md
 include DOCUMENTATION.md
+include LOCAL_APP.md
+include requirements-app.lock
+include *.command
+
+# Optional native macOS launcher source
+recursive-include scripts *.py *.swift
 
 # Include package data
 recursive-include lotus_lamp/data *.json

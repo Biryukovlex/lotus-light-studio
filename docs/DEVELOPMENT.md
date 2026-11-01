@@ -19,9 +19,11 @@ before connecting. Use Disconnect before controlling it from another app.
 Ctrl+C shuts down the server and releases Bluetooth. The launcher reuses an
 already-running compatible local instance. There is no background service.
 
-The current delivery is a browser-based local desktop app, not a signed macOS
-.app bundle. Packaging as a native window is a separate optional distribution
-step; the existing loopback and Bluetooth security boundaries must survive it.
+The main delivery is a browser-based local app. An optional locally signed macOS
+window can be built with `.venv/bin/python scripts/build_macos_launcher.py`; see the
+[Desktop launcher](../LOCAL_APP.md#desktop-launcher). It runs the same server and
+frontend, keeping the loopback and Bluetooth boundaries. It is not notarized or a
+self-contained Python distribution.
 
 ## Architecture
 
@@ -34,6 +36,8 @@ step; the existing loopback and Bluetooth security boundaries must survive it.
 | `lotus_lamp/web/style.css` | Theme tokens, responsive layout, control states |
 | `lotus_lamp/web/app.js` | Connection UI, commands, busy/error state, playback toggle |
 | `lotus_lamp/modes.py` | Built-in effect IDs and names |
+| `scripts/macos_launcher.swift` | Native local window, server lifecycle and app icon |
+| `scripts/build_macos_launcher.py` | Build/sign the local wrapper and optionally install it |
 | `tests/test_app.py` | API protections and actual outgoing protocol bytes via BLE mocks |
 | `tests/web_app.test.cjs` | Frontend pause/resume, failure and concurrency contracts |
 | `docs/APP_DESIGN.md` | Visual direction and interaction requirements |
@@ -177,6 +181,13 @@ configuration, original recovery archives, proprietary APKs/decompilation,
 local logs, or Git credentials. Those are not required to build or run this app.
 Existing recovery backups remain separate. There is no recoverable firmware
 image in this source package.
+
+Native wrapper bundles under `output/launchers/` embed the local checkout path;
+keep them private and rebuild from source on another Mac. The wrapper reuses an
+already-running compatible server, otherwise starts `.venv/bin/python` directly.
+Only a server it started receives SIGTERM on Quit/window close. Generated app
+state remains in the existing `.local/` directory. Native builds need macOS 12+
+and Xcode Command Line Tools; Python dependencies must already be installed.
 
 ## Animated program discovery
 

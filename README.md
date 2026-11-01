@@ -2,7 +2,7 @@
 
 ![Lotus Light Studio — Pause the glow. Save the moment.](docs/images/lotus-light-studio-promo.png)
 
-A local Bluetooth control app for Lotus Lamp–compatible lights, with **Pause** at its heart.
+A local Bluetooth control app for Lotus Lamp–compatible lights, with **Pause** at its heart. Run it as a **Mac app** or a **web app** in your browser.
 
 ## What you can do
 
@@ -20,17 +20,38 @@ A local Bluetooth control app for Lotus Lamp–compatible lights, with **Pause**
 
 </details>
 
-## Run on macOS
+## Run locally
 
-Requires Bluetooth and **Python 3.11+ or uv**.
+Requires Bluetooth and **Python 3.11+ or uv**. Both options use the same controls, saved lamp and custom presets, with no cloud account or remote assets.
 
 ```sh
 git clone https://github.com/Biryukovlex/lotus-light-studio.git
 cd lotus-light-studio
+```
+
+### Web app
+
+Double-click **Launch Lotus Lamp.command**, or run:
+
+```sh
 open "Launch Lotus Lamp.command"
 ```
 
-Or double-click the launcher. Allow Bluetooth access, close the lamp's phone app, and connect at **http://127.0.0.1:8420**. Keep the terminal open; Ctrl+C stops the app and releases Bluetooth. First launch installs dependencies; the app then needs no cloud account or remote assets.
+First launch installs the Python dependencies and opens **http://127.0.0.1:8420**. Keep its terminal open; Ctrl+C stops the server and releases Bluetooth.
+
+### Mac app
+
+After the first-time setup above, stop the web server with Ctrl+C and build the native app. Building requires **macOS 12+ and Xcode Command Line Tools**:
+
+```sh
+.venv/bin/python scripts/build_macos_launcher.py --install-path "$HOME/Desktop/Lotus Light Studio.app"
+```
+
+Double-click **Lotus Light Studio.app** on your Desktop. It starts the server and opens the studio in its own window, without a terminal or coding assistant. Closing the window or Cmd+Q stops the server it started. An already-running server is reused and remains running when the window closes.
+
+The Mac app is locally built and signed, and uses this checkout's Python environment. Keep the project folder in place; rebuild if you move it. [Launcher details](LOCAL_APP.md#desktop-launcher).
+
+For either option, allow Bluetooth access when asked, close the lamp's phone app, and connect your lamp.
 
 ## Compatibility and limits
 

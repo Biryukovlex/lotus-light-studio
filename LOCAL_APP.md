@@ -26,6 +26,29 @@ python3 -m venv .venv
 Use `--port 8421` if the default port is occupied, `--no-browser` to suppress the
 browser, or `--config /path/to/device.json` to choose a different saved-device file.
 
+### Desktop launcher
+
+After setting up the Python environment once, you can build a native macOS window
+with Xcode Command Line Tools installed:
+
+```sh
+.venv/bin/python scripts/build_macos_launcher.py --install-path "$HOME/Desktop/Lotus Light Studio.app"
+```
+
+Double-click **Lotus Light Studio.app** on the Desktop. It starts the local server
+and opens the same controls in its own window; no terminal or coding assistant is
+needed. Allow Bluetooth access if macOS asks, then connect your lamp.
+
+Closing the window or pressing Cmd+Q stops a server started by this launcher and
+releases Bluetooth. If a compatible server was already running, the launcher
+reuses it and leaves that separately started server running when closed.
+
+This is a locally signed wrapper for the existing checkout and `.venv`, not a
+notarized standalone distribution. Keep the project in place, or rebuild after
+moving it. Build output lives under ignored `output/launchers/`; the local source
+path is embedded only in that generated bundle. Startup logs stay in ignored
+`.local/launcher.log` with private permissions.
+
 ## Connect
 
 1. Power on the lamp and fully close its phone app. The lamp accepts one connection.
