@@ -84,7 +84,11 @@ class SignalRGBBridge:
         self.reconnecting = False
         self.error = None
         self.pending = None  # Shutdown instruction: ("off", None) or ("final", rgb)
-        self.lamp_off = False  # True after a power-off instruction; the next color powers on
+        self.lamp_off = False  # True after this bridge powered the lamp off
+        # Power state is unknown after enabling or reconnecting (the lamp may have been powered
+        # off at the last PC shutdown, before this process existed), so the first color is
+        # preceded by power-on.
+        self.power_on_needed = False
         self.shutdown_handled_at = None
         self.transport = None
         self.task = None
@@ -177,6 +181,7 @@ class SignalRGBBridge:
         self.enabled = True
         self.sent = None  # The lamp may show something else; resend the current color.
         self.pending = None
+        self.power_on_needed = True
         self._stopped.clear()
         self._wakeup.set()
         if self.task is None or self.task.done():
@@ -223,10 +228,10 @@ class SignalRGBBridge:
                     if not self.control.connected:
                         continue
                     try:
-                        if self.lamp_off:
+                        if self.power_on_needed:
                             await self.control.write("power_on")
                             self.control.values["power"] = True
-                            self.lamp_off = False
+                            self.power_on_needed = self.lamp_off = False
                         await self.control.write("set_rgb", *color, delay=0)
                     except Exception:
                         # control.write already dropped the link; the next pass reconnects.
@@ -253,7 +258,7 @@ class SignalRGBBridge:
                 if kind == "off":
                     await self.control.write("power_off")
                     self.control.values["power"] = False
-                    self.lamp_off = True
+                    self.lamp_off = self.power_on_needed = True
                 else:
                     await self.control.write("set_rgb", *color, delay=0)
                     self.control.values["color"] = "#%02x%02x%02x" % color
@@ -281,4 +286,5 @@ class SignalRGBBridge:
             return False
         self.reconnecting = False
         self.sent = None
+        self.power_on_needed = True
         return True

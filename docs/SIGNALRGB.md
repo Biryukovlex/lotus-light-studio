@@ -60,7 +60,8 @@ off explicitly. These rules apply while SignalRGB sync is on.
   plugin's `Shutdown()`, which applies **Shutdown Action** (device settings in SignalRGB):
   - **Turn lamp off** (default) sends the lamp's real power-off command. The next effect color
     sends power-on first, so the lamp comes back by itself when SignalRGB starts again or the PC
-    wakes up.
+    wakes up. After a restart of the PC or the app, the lamp's power state is unknown, so the first
+    color after sync turns on (or after a reconnect) is always preceded by power-on.
   - **Use Shutdown Color** sends the **Shutdown Color** instead; the lamp stays powered.
 - **Safety net in the Windows app (`.exe`):** when Windows ends the session, the app lets the
   shutdown proceed (it never cancels it), waits up to 2 s for the plugin's instruction, and turns

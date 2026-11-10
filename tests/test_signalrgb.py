@@ -98,8 +98,9 @@ async def test_color_forwarded_once_and_repeats_dropped(bridge_control):
     for _ in range(5):
         bridge_control.send(200, 100, 50)
     await until(lambda: control.signalrgb.received == 5)
-    await asyncio.sleep(0.2)
-    assert colors_written(client) == [ble_frame(200, 100, 50)]
+    await until(lambda: control.signalrgb.forwarded == 1)
+    await asyncio.sleep(0.2)  # Repeats must not produce further writes.
+    assert colors_written(client) == [POWER_ON, ble_frame(200, 100, 50)]  # Power state unknown when sync starts.
     assert control.values["color"] == "#c86432"
     assert control.signalrgb.forwarded == 1
 
@@ -142,7 +143,7 @@ async def test_manual_command_disables_sync_and_stops_forwarding(bridge_control)
     bridge_control.send(9, 9, 9)
     await until(lambda: control.signalrgb.received == 2)
     await asyncio.sleep(0.15)
-    assert colors_written(client) == [ble_frame(1, 1, 1), ble_frame(255, 255, 255)]
+    assert colors_written(client) == [POWER_ON, ble_frame(1, 1, 1), ble_frame(255, 255, 255)]
 
 
 @pytest.mark.asyncio
@@ -187,7 +188,7 @@ async def test_write_failure_reconnects_saved_lamp_and_resends_latest(bridge_con
     bridge_control.send(5, 6, 7)
     await until(lambda: control.signalrgb.forwarded == 1)
     control.connect.assert_awaited_once()
-    assert colors_written(replacement) == [ble_frame(5, 6, 7)]
+    assert colors_written(replacement) == [POWER_ON, ble_frame(5, 6, 7)]  # Reconnected: power state unknown.
     assert control.signalrgb.enabled is True
 
 
@@ -297,7 +298,7 @@ async def test_final_color_is_written_even_if_unchanged(bridge_control):
     await until(lambda: control.signalrgb.forwarded == 1)
     bridge_control.send(raw=encode_final_color(0, 0, 0))
     await until(lambda: control.signalrgb.forwarded == 2)
-    assert colors_written(client) == [ble_frame(0, 0, 0), ble_frame(0, 0, 0)]
+    assert colors_written(client) == [POWER_ON, ble_frame(0, 0, 0), ble_frame(0, 0, 0)]
     assert control.signalrgb.shutdown_handled
 
 
@@ -351,3 +352,29 @@ def test_session_ending_reads_windows_shutdown_flag():
         user32.GetSystemMetrics.assert_called_with(0x2000)
         user32.GetSystemMetrics.return_value = 0
         assert desktop.session_ending() is False
+
+
+@pytest.mark.asyncio
+async def test_lamp_powered_off_at_last_shutdown_is_turned_on_after_reboot(tmp_path):
+    """Regression: the PC shut down (plugin powered the lamp off), then booted and resumed sync.
+
+    The new process cannot know the lamp is off, so it must power it on before the first color.
+    """
+    control = LampControl(tmp_path / "device.json", signalrgb_port=0)
+    client = make_client()
+    attach_lamp(control, client)
+    control.settings_path.write_text(json.dumps({"signalrgb": True}))
+    await control.signalrgb.start()
+    sender = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        control.resume_sync()
+        sender.sendto(encode_packet(80, 40, 200), ("127.0.0.1", control.signalrgb.port))
+        await until(lambda: control.signalrgb.forwarded == 1)
+        assert colors_written(client) == [POWER_ON, ble_frame(80, 40, 200)]
+        sender.sendto(encode_packet(81, 40, 200), ("127.0.0.1", control.signalrgb.port))
+        await until(lambda: control.signalrgb.forwarded == 2)
+        assert colors_written(client)[-1] == ble_frame(81, 40, 200)
+        assert colors_written(client).count(POWER_ON) == 1  # Only once, not before every color.
+    finally:
+        sender.close()
+        await control.signalrgb.stop()
