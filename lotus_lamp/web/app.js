@@ -8,6 +8,7 @@ let presets = [], editingPreset = null, lastPausedCapture = null;
 let captureSessionId = null, presetTab = 'default', dialogPhase = 0;
 let preferredCaptureSpeed = 25;
 let captureReceivedAt = 0;
+let signalrgbWasOn = false, signalrgbToggling = false;
 
 function message(text, error = false) {
   const target = $("preset-dialog").open ? $("preset-message") : $("message");
@@ -74,6 +75,29 @@ function renderState(next) {
   }
   renderCapture();
   renderPresetControls();
+  renderSignalRGB(next.signalrgb);
+}
+
+function renderSignalRGB(sync) {
+  if (!sync) return;
+  const on = sync.enabled;
+  $("signalrgb-toggle").setAttribute("aria-checked", String(on));
+  $("signalrgb-toggle").textContent = t(on ? "On" : "Off");
+  // While reconnecting the lamp is offline, but sync must still be switchable off.
+  $("signalrgb-toggle").disabled = busy || !sync.listening || (!on && !state?.connected);
+  $("signalrgb-detail").textContent = t(
+    sync.error ? sync.error
+    : !on ? "Off. Turn it on to let SignalRGB effects color the whole lamp."
+    : sync.reconnecting ? "Bluetooth link lost. Reconnecting to your lamp…"
+    : sync.receiving ? "Live. SignalRGB is coloring the lamp."
+    : "Waiting for SignalRGB. Install the Lotus Lamp plugin and apply an effect.");
+  $("signalrgb-detail").classList.toggle("error", Boolean(sync.error));
+  $("signalrgb-swatch").style.background = sync.receiving && sync.color ? sync.color : "transparent";
+  $("signalrgb-stats").textContent = t("{received} received · {sent} sent to lamp · max {rate}/s",
+    {received: sync.received, sent: sync.forwarded, rate: sync.rate});
+  if (signalrgbWasOn && !on && !signalrgbToggling)
+    message("SignalRGB sync turned off because you used a manual control.");
+  signalrgbWasOn = on;
 }
 
 function programName(id) {
@@ -573,6 +597,12 @@ $('preset-form').onsubmit = event => {
     renderPresets(await api('preset-save', body));
     choosePresetTab('custom'); finishPresetDialog();
   }, 'Saving preset…', 'Preset saved locally.');
+};
+$("signalrgb-toggle").onclick = () => {
+  const enabled = !state?.signalrgb?.enabled;
+  signalrgbToggling = true;
+  run(() => api("signalrgb", {enabled}), enabled ? "Starting SignalRGB sync…" : "Stopping SignalRGB sync…",
+    enabled ? "SignalRGB sync on." : "SignalRGB sync off.").finally(() => { signalrgbToggling = false; });
 };
 $('preset-time').oninput = () => { renderCapture(); renderPresetControls(); };
 async function initialize() {

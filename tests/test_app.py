@@ -17,7 +17,7 @@ from lotus_lamp.app import AppError, LampControl, create_app
 
 @pytest.fixture
 def control(tmp_path):
-    return LampControl(tmp_path / "device.json")
+    return LampControl(tmp_path / "device.json", signalrgb_port=0)
 
 
 @pytest.fixture

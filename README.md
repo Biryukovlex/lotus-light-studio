@@ -48,6 +48,22 @@ Double-click **Launch Lotus Lamp.bat**. First launch creates `.venv`, installs t
 
 If the lamp does not appear in the scan, turn Bluetooth on in Windows Settings and make sure the lamp is not connected to the phone app. Do not pair the lamp in Windows Settings; the app connects to it directly.
 
+### SignalRGB sync (Windows)
+
+Let [SignalRGB](https://signalrgb.com) effects color the lamp alongside the rest of your RGB setup.
+
+1. Copy the `signalrgb/LotusLamp` folder to `Documents\WhirlwindFX\Plugins\LotusLamp` (use `OneDrive\Documents\…` if your Documents folder is synced) and restart SignalRGB. **Lotus Lamp** appears under Devices; no IP needs to be entered.
+2. Start Lotus Light Studio, connect the lamp and switch **SignalRGB sync** on.
+3. In SignalRGB → Layouts, place the Lotus Lamp where you want it to sample the effect.
+
+How it works: the plugin sends the lamp's color as a 9-byte UDP packet (`LOTUS`, version `1`, R, G, B) to **127.0.0.1:8421**; the app forwards it over Bluetooth LE.
+
+- The lamp shows **one color at a time**. Effects that move along a strip become a single color changing over time, taken from where the lamp sits on the canvas.
+- At most **15 updates per second** reach the lamp; faster frames are merged into the latest one and repeated colors are not resent.
+- The receiver listens on this PC only. Use `--signalrgb-port` (and the port field on the plugin's Network card) if 8421 is taken.
+- Any manual control (color, effect, brightness, preset, scan, disconnect) turns sync off. If Bluetooth drops while syncing, the app reconnects automatically (waiting 2 s, then up to 30 s between attempts).
+- The plugin's **Lighting Mode** (Canvas/Forced) and **Shutdown Color** settings work like other SignalRGB devices.
+
 ### Mac app
 
 After the first-time setup above, stop the web server with Ctrl+C and build the native app. Building requires **macOS 12+ and Xcode Command Line Tools**:

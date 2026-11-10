@@ -52,3 +52,15 @@ test('every literal t() key in app.js has a Spanish translation', () => {
   const missing = keys.filter(key => t(key) === key);
   assert.deepEqual(missing, []);
 });
+
+test('SignalRGB panel strings are translated, including the busy-port message', () => {
+  const {t} = load({language: 'es'});
+  for (const key of ['SignalRGB sync', 'Live. SignalRGB is coloring the lamp.',
+    'SignalRGB sync turned off because you used a manual control.', 'Bluetooth link lost. Reconnecting to your lamp…',
+    'Waiting for SignalRGB. Install the Lotus Lamp plugin and apply an effect.'])
+    assert.notEqual(t(key), key);
+  assert.equal(t('{received} received · {sent} sent to lamp · max {rate}/s', {received: 3, sent: 2, rate: 15}),
+    '3 recibidos · 2 enviados a la lámpara · máx. 15/s');
+  assert.match(t('SignalRGB port 8421 is unavailable: in use. Close the other program using it and restart the app.'),
+    /^El puerto 8421 de SignalRGB no está disponible: in use\./);
+});

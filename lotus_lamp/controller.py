@@ -237,7 +237,7 @@ class LotusLamp:
 
     # ==================== RGB COLOR CONTROL ====================
 
-    async def set_rgb(self, r: int, g: int, b: int):
+    async def set_rgb(self, r: int, g: int, b: int, *, delay: float = 0.1):
         """
         Set RGB color
 
@@ -255,7 +255,7 @@ class LotusLamp:
         b = max(0, min(255, b))
 
         command = bytes([0x7E, 0x07, 0x05, 0x03, r, g, b, 0x10, 0xEF])
-        await self._send_command(command)
+        await self._send_command(command, delay=delay)
 
     async def set_color(self, color: str):
         """Set color by name"""

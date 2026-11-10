@@ -154,6 +154,24 @@
       "No se puede contactar con la app local: {error}. Mantén abierto el lanzador y recarga la página.",
     "Local server is unavailable. Restart the launcher and reload.": "El servidor local no está disponible. Reinicia el lanzador y recarga la página.",
     "The lamp request failed.": "La petición a la lámpara falló.",
+    // SignalRGB sync
+    "SignalRGB sync": "Sincronización con SignalRGB",
+    "Off. Turn it on to let SignalRGB effects color the whole lamp.":
+      "Desactivada. Actívala para que los efectos de SignalRGB coloreen toda la lámpara.",
+    "Bluetooth link lost. Reconnecting to your lamp…": "Se perdió la conexión Bluetooth. Reconectando con tu lámpara…",
+    "Live. SignalRGB is coloring the lamp.": "En vivo. SignalRGB está coloreando la lámpara.",
+    "Waiting for SignalRGB. Install the Lotus Lamp plugin and apply an effect.":
+      "Esperando a SignalRGB. Instala el plugin Lotus Lamp y aplica un efecto.",
+    "{received} received · {sent} sent to lamp · max {rate}/s": "{received} recibidos · {sent} enviados a la lámpara · máx. {rate}/s",
+    "0 received · 0 sent to lamp": "0 recibidos · 0 enviados a la lámpara",
+    "SignalRGB sync turned off because you used a manual control.":
+      "La sincronización con SignalRGB se desactivó porque usaste un control manual.",
+    "Starting SignalRGB sync…": "Activando la sincronización con SignalRGB…",
+    "Stopping SignalRGB sync…": "Desactivando la sincronización con SignalRGB…",
+    "SignalRGB sync on.": "Sincronización con SignalRGB activada.",
+    "SignalRGB sync off.": "Sincronización con SignalRGB desactivada.",
+    "SignalRGB sync must be true or false.": "La sincronización con SignalRGB debe ser verdadera o falsa.",
+    "SignalRGB receiver is not running.": "El receptor de SignalRGB no está en marcha.",
     // Server messages (lotus_lamp/app.py, lotus_lamp/presets.py)
     "Connect to your lamp first.": "Primero conecta tu lámpara.",
     "Timed playback failed. Reconnect before trying again; it was not replayed.":
@@ -198,6 +216,8 @@
       `No se pudo cargar el dispositivo guardado: ${detail}. Busca de nuevo para seleccionarlo.`],
     [/^Could not load presets: (.*)\. The original file has been preserved\.$/s, (m, detail) =>
       `No se pudieron cargar los ajustes: ${detail}. El archivo original se ha conservado.`],
+    [/^SignalRGB port (\d+) is unavailable: (.*)\. Close the other program using it and restart the app\.$/s, (m, port, detail) =>
+      `El puerto ${port} de SignalRGB no está disponible: ${detail}. Cierra el otro programa que lo usa y reinicia la app.`],
   ];
   // Labels passed to the server's integer() check.
   Object.assign(es, {"Program": "Programa", "Pause time (ms)": "Tiempo de pausa (ms)", "Resume speed": "Velocidad al reanudar", "Mode": "Modo"});
