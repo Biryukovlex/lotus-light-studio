@@ -32,6 +32,12 @@ self-contained Python distribution.
 | `lotus_lamp/app.py` | aiohttp HTTP API, validation, exact device identity, serialized BLE operations |
 | `lotus_lamp/controller.py` | BLE command frames, normal speed, experimental animation hold |
 | `lotus_lamp/presets.py` | Versioned, validated, atomic local preset storage |
+| `lotus_lamp/signalrgb.py` | SignalRGB bridge: loopback UDP receiver, 15/s rate limit, de-duplication, BLE reconnect ([SIGNALRGB.md](SIGNALRGB.md)) |
+| `lotus_lamp/desktop.py` | Windows app: server thread, pywebview window, tray icon, single instance |
+| `lotus_lamp/web/i18n.js` | English/Spanish strings, language picker, server message translation |
+| `signalrgb/LotusLamp/` | SignalRGB network plugin (`LotusLamp.js`) and its Network card (`LotusLamp.qml`) |
+| `scripts/build-windows.ps1` | PyInstaller build of the Windows app from `requirements-desktop-windows.lock` |
+| `scripts/install-windows-shortcuts.ps1` | Desktop and Startup shortcuts, one-time migration of `.local` files |
 | `lotus_lamp/web/index.html` | Semantic controls and the single large Pause/Resume button |
 | `lotus_lamp/web/style.css` | Theme tokens, responsive layout, control states |
 | `lotus_lamp/web/app.js` | Connection UI, commands, busy/error state, playback toggle |
@@ -39,6 +45,7 @@ self-contained Python distribution.
 | `scripts/macos_launcher.swift` | Native local window, server lifecycle and app icon |
 | `scripts/build_macos_launcher.py` | Build/sign the local wrapper and optionally install it |
 | `tests/test_app.py` | API protections and actual outgoing protocol bytes via BLE mocks |
+| `tests/test_signalrgb.py` | SignalRGB packets, throttling, takeover, reconnect and remembered sync |
 | `tests/web_app.test.cjs` | Frontend pause/resume, failure and concurrency contracts |
 | `tests/i18n.test.cjs` | Language detection and Spanish translations, including server messages |
 | `docs/APP_DESIGN.md` | Visual direction and interaction requirements |
@@ -78,6 +85,8 @@ hosting. The server should remain bound to 127.0.0.1.
 | `/api/preset-save` | `{"name":"Night","mode":138,"pause_ms":258,"speed":17}`; add `id` to update |
 | `/api/preset-play` | `{"id":"saved-preset-id"}` |
 | `/api/preset-delete` | `{"id":"saved-preset-id"}` |
+| `/api/signalrgb` | `{"enabled":true}`; requires a connected lamp. See [SIGNALRGB.md](SIGNALRGB.md#api) |
+| `/api/show-window` | `{}`; only in the Windows app, raises its window (used by a second launch) |
 
 Power and hold use strict booleans. Brightness, normal speed and resume speed use
 integers 0..100; mode uses 0..212. Applying an effect submits mode then normal
@@ -111,7 +120,10 @@ then cancel the timer, so an in-flight BLE write always finishes its state updat
 Pause preserves and captures elapsed time. Scan/connect/disconnect/shutdown cancel outstanding work. New sessions cancel
 older sessions, including concurrent starts. Bluetooth write errors disconnect
 without retry and surface a status notice. Neither recipes nor pending work are
-automatically executed after startup/reconnection. Closing or reloading a browser
+automatically executed after startup/reconnection. The one exception is SignalRGB
+sync: while it is on, the bridge reconnects the saved lamp with backoff and sends
+only the newest color, and a remembered sync preference resumes at startup.
+Any manual control turns sync off first. Closing or reloading a browser
 does not affect a server task; stopping/disconnecting the server does.
 
 ## Pause implementation and limits

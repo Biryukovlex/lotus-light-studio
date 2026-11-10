@@ -79,6 +79,8 @@ How it works: the plugin sends the lamp's color as a 9-byte UDP packet (`LOTUS`,
 - Any manual control (color, effect, brightness, preset, scan, disconnect) turns sync off. If Bluetooth drops while syncing, the app reconnects automatically (waiting 2 s, then up to 30 s between attempts).
 - The plugin's **Lighting Mode** (Canvas/Forced) and **Shutdown Color** settings work like other SignalRGB devices.
 
+Full guide, packet format, shutdown behavior and troubleshooting: [SignalRGB sync](docs/SIGNALRGB.md).
+
 ### Mac app
 
 After the first-time setup above, stop the web server with Ctrl+C and build the native app. Building requires **macOS 12+ and Xcode Command Line Tools**:
@@ -102,3 +104,7 @@ Tested on macOS and Windows 11 with a **Tyute SSG-500 / MELK-OA10**. Other contr
 Developers are welcome! Add controller support, improve effect previews, investigate the protocol, or extend the controls. Open an issue or pull request, and include your lamp model and test evidence. See the [developer guide](docs/DEVELOPMENT.md) and [protocol notes](docs/PROTOCOL.md).
 
 Developed by [biryukovlex](https://github.com/Biryukovlex), built on [Wayne Porter's Lotus Lamp Python](https://github.com/wporter82/lotus-lamp-python). [MIT license](LICENSE).
+
+### Contributors
+
+- [Jose Duarte](https://github.com/josegduarte96) — Windows support and app, Spanish interface, SignalRGB sync.
