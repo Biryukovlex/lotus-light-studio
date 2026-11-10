@@ -7,6 +7,7 @@
     <title>Lotus · Lamp control</title>
     <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/assets/style.css" />
+    <script src="/assets/i18n.js" defer></script>
     <script src="/assets/app.js" defer></script>
   </head>
   <body>
@@ -14,6 +15,7 @@
       <header class="app-header">
         <a class="brand" href="/">lotus<span> / lamp control</span></a>
         <div class="connection-summary">
+          <select id="language" class="language-picker" aria-label="Language"></select>
           <span id="connection-state" class="status">Disconnected</span>
           <button id="reconnect" class="button button-small" hidden>Connect</button>
           <details class="connection-tools">

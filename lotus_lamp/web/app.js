@@ -1,5 +1,8 @@
 "use strict";
 const $ = (id) => document.getElementById(id);
+// Translations come from i18n.js; without it the English source text is used.
+const t = globalThis.LotusI18n?.t ||
+  ((text, vars) => vars ? text.replace(/\{(\w+)\}/g, (match, key) => (key in vars ? String(vars[key]) : match)) : text);
 let state = null, busy = false, modes = [];
 let presets = [], editingPreset = null, lastPausedCapture = null;
 let captureSessionId = null, presetTab = 'default', dialogPhase = 0;
@@ -8,7 +11,7 @@ let captureReceivedAt = 0;
 
 function message(text, error = false) {
   const target = $("preset-dialog").open ? $("preset-message") : $("message");
-  target.textContent = text;
+  target.textContent = t(text);
   target.classList.toggle("error", error);
 }
 
@@ -24,35 +27,35 @@ async function api(path, body) {
         },
   );
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "The lamp request failed.");
+  if (!response.ok) throw new Error(data.error || t("The lamp request failed."));
   return data;
 }
 
 function renderState(next) {
   state = next;
   $("connection-state").textContent = next.connected
-    ? "Connected"
-    : "Disconnected";
+    ? t("Connected")
+    : t("Disconnected");
   $("connection-state").classList.toggle("connected", next.connected);
   $("device-name").textContent =
-    next.device?.name || next.saved?.name || "Choose your lamp";
+    next.device?.name || next.saved?.name || t("Choose your lamp");
   $("device-detail").textContent = next.connected
-    ? "Bluetooth link active. Ready to send controls."
-    : "Power it on, keep it nearby, and close its phone app.";
+    ? t("Bluetooth link active. Ready to send controls.")
+    : t("Power it on, keep it nearby, and close its phone app.");
   $("disconnect").hidden = !next.connected;
   $("reconnect").hidden = next.connected || !next.saved;
   $("essentials").disabled = busy || !next.connected;
   $("scan").disabled = busy;
-  $("scan").textContent = busy ? "Working…" : "Scan for lamps";
+  $("scan").textContent = busy ? t("Working…") : t("Scan for lamps");
   $("reconnect").disabled = busy;
   $("disconnect").disabled = busy;
   const held = next.values?.hold === true && next.capture?.stage !== 'starting';
   $("toggle-playback").setAttribute("aria-pressed", String(held));
-  $("toggle-playback").setAttribute("aria-label", held ? "Resume animation" : "Pause animation");
-  $("playback-label").textContent = held ? "Resume" : "Pause";
-  $("playback-state").textContent = !next.connected ? "Not connected"
+  $("toggle-playback").setAttribute("aria-label", held ? t("Resume animation") : t("Pause animation"));
+  $("playback-label").textContent = held ? t("Resume") : t("Pause");
+  $("playback-state").textContent = t(!next.connected ? "Not connected"
     : next.capture?.stage === 'starting' ? 'Starting…'
-    : held ? "Paused" : next.values?.hold === false ? "Playing" : "Ready";
+    : held ? "Paused" : next.values?.hold === false ? "Playing" : "Ready");
   for (const [id, value] of [["power-on", true], ["power-off", false]]) {
     if (typeof next.values?.power === "boolean")
       $(id).setAttribute("aria-pressed", String(next.values.power === value));
@@ -74,7 +77,7 @@ function renderState(next) {
 }
 
 function programName(id) {
-  return modes.find(mode => mode.id === id)?.name || `Program ${id}`;
+  return modes.find(mode => mode.id === id)?.name || t("Program {id}", {id});
 }
 
 function ownedCapture() {
@@ -89,16 +92,16 @@ function renderCapture() {
   const active = state?.capture;
   if (active?.stage === 'running') {
     const elapsed = active.elapsed_ms + Date.now() - captureReceivedAt;
-    $('playback-state').textContent = `Capture · ${(elapsed / 1000).toFixed(3)} s`;
+    $('playback-state').textContent = t('Capture · {seconds} s', {seconds: (elapsed / 1000).toFixed(3)});
   }
   const capture = ownedCapture();
   let elapsed = capture?.elapsed_ms ?? Math.round(Number($('preset-time').value || 0) * 1000);
   if (capture?.stage === 'running') elapsed += Date.now() - captureReceivedAt;
   $('capture-time').textContent = `${(elapsed / 1000).toFixed(3)} s`;
-  const labels = {starting: `Starting at ${capture?.speed ?? 100}%…`, running: 'Pause when you find your frame',
+  const labels = {starting: t('Starting at {speed}%…', {speed: capture?.speed ?? 100}), running: 'Pause when you find your frame',
     paused: 'Frame held · ready to save', cancelled: 'Capture ended · start again'};
-  $('capture-state').textContent = !state?.connected ? 'Connect your lamp to capture'
-    : labels[capture?.stage] || (editingPreset ? 'Saved timing · edit or capture again' : 'Ready when you are');
+  $('capture-state').textContent = t(!state?.connected ? 'Connect your lamp to capture'
+    : labels[capture?.stage] || (editingPreset ? 'Saved timing · edit or capture again' : 'Ready when you are'));
 }
 
 function renderPresetControls() {
@@ -107,22 +110,22 @@ function renderPresetControls() {
   const active = captureActive();
   $('add-custom-preset').disabled = busy;
   $('start-capture').disabled = busy || !state?.connected || !hasMode || active;
-  $('start-capture').textContent = ownedCapture() ? 'Capture again' : 'Start capture';
+  $('start-capture').textContent = t(ownedCapture() ? 'Capture again' : 'Start capture');
   $('capture-effect').disabled = busy || active;
   $('capture-speed').disabled = busy || active;
   $('capture-speed-value').textContent = `${$('capture-speed').value}%`;
   $('capture-pause').disabled = busy || !state?.connected || !active;
   const paused = ownedCapture()?.stage === 'paused';
-  $('capture-pause-label').textContent = paused ? 'Paused' : 'Pause';
+  $('capture-pause-label').textContent = t(paused ? 'Paused' : 'Pause');
   $('capture-pause').setAttribute('data-paused', String(paused));
   const timing = $('preset-time').value;
   const validTime = timing !== '' && Number.isFinite(Number(timing)) && Number(timing) >= 0 && Number(timing) <= 600;
   $('preset-time').disabled = busy || active;
   $('save-preset').disabled = busy || active || !hasMode || !validTime;
-  $('save-preset').textContent = editingPreset ? 'Update preset' : 'Save preset';
+  $('save-preset').textContent = t(editingPreset ? 'Update preset' : 'Save preset');
   $('close-preset-dialog').disabled = busy;
   $('cancel-preset-dialog').disabled = busy;
-  $('preset-program').textContent = `Program: ${programName(mode)} · ${$('capture-speed').value}% speed`;
+  $('preset-program').textContent = t('Program: {name} · {speed}% speed', {name: programName(mode), speed: $('capture-speed').value});
   document.querySelectorAll('.preset-play').forEach(button => { button.disabled = busy || !state?.connected; });
   document.querySelectorAll('.preset-edit, .preset-delete').forEach(button => { button.disabled = busy; });
 }
@@ -141,7 +144,7 @@ function choosePresetTab(tab, focus = false) {
 function openPresetDialog(preset = null) {
   if (busy || $('preset-dialog').open) return;
   editingPreset = preset?.id ?? null; captureSessionId = null;
-  $('preset-dialog-title').textContent = preset ? 'Edit custom preset' : 'Add custom preset';
+  $('preset-dialog-title').textContent = t(preset ? 'Edit custom preset' : 'Add custom preset');
   const selected = Number($('effect').value);
   $('capture-effect').value = preset?.mode ?? (modes.some(mode => mode.id === selected) ? selected : modes[0]?.id);
   $('capture-speed').value = preset?.speed ?? (preset ? 100 : preferredCaptureSpeed);
@@ -174,7 +177,7 @@ function renderPresets(data) {
   const list = $('preset-list'); list.replaceChildren();
   if (!presets.length) {
     const empty = document.createElement('p'); empty.className = 'preset-empty';
-    empty.textContent = data.notice || 'No custom presets yet. Add one to capture your first frame.';
+    empty.textContent = t(data.notice || 'No custom presets yet. Add one to capture your first frame.');
     list.append(empty);
   }
   presets.forEach(preset => {
@@ -185,7 +188,7 @@ function renderPresets(data) {
     detail.textContent = `${programName(preset.mode)} · ${(preset.pause_ms / 1000).toFixed(3)} s · ${speed}%`;
     const actions = document.createElement('div'); actions.className = 'preset-actions';
     const play = document.createElement('button'); play.className = 'button preset-play';
-    play.textContent = 'Replay'; play.setAttribute('aria-label', `Replay ${preset.name}`);
+    play.textContent = t('Replay'); play.setAttribute('aria-label', t('Replay {name}', {name: preset.name}));
     play.disabled = busy || !state?.connected;
     play.onclick = () => {
       if (busy || !state?.connected) return;
@@ -193,13 +196,13 @@ function renderPresets(data) {
         const result = await api('preset-play', {id: preset.id});
         selectPresetProgram(preset.mode, speed);
         return result;
-      }, 'Starting preset…', `Replaying at ${speed}%. Pause will happen automatically.`);
+      }, 'Starting preset…', t('Replaying at {speed}%. Pause will happen automatically.', {speed}));
     };
     const edit = document.createElement('button'); edit.className = 'text-button preset-edit';
-    edit.textContent = 'Edit'; edit.setAttribute('aria-label', `Edit ${preset.name}`);
+    edit.textContent = t('Edit'); edit.setAttribute('aria-label', t('Edit {name}', {name: preset.name}));
     edit.onclick = () => openPresetDialog(preset);
     const remove = document.createElement('button'); remove.className = 'text-button preset-delete';
-    remove.textContent = 'Delete'; remove.setAttribute('aria-label', `Delete ${preset.name}`);
+    remove.textContent = t('Delete'); remove.setAttribute('aria-label', t('Delete {name}', {name: preset.name}));
     remove.onclick = () => run(async () => {
       renderPresets(await api('preset-delete', {id: preset.id}));
     }, 'Deleting preset…', 'Preset deleted.');
@@ -242,7 +245,7 @@ function renderDevices(devices) {
   $("devices").replaceChildren();
   if (!devices.length) {
     $("devices").textContent =
-      "No devices found. Check Bluetooth permission and close the phone app, then scan again.";
+      t("No devices found. Check Bluetooth permission and close the phone app, then scan again.");
     return;
   }
   // Show likely lamps first; reveal other devices for controllers with different names.
@@ -259,12 +262,12 @@ function renderDevices(devices) {
     info.append(title, detail);
     const button = document.createElement("button");
     button.className = "secondary";
-    button.textContent = "Connect";
-    button.setAttribute("aria-label", `Connect to ${device.name}`);
+    button.textContent = t("Connect");
+    button.setAttribute("aria-label", t("Connect to {name}", {name: device.name}));
     button.onclick = () =>
       run(
         () => api("connect", device),
-        `Connecting to ${device.name}…`,
+        t("Connecting to {name}…", {name: device.name}),
         "Connected.",
       );
     row.append(info, button);
@@ -274,7 +277,7 @@ function renderDevices(devices) {
   if (others.length) {
     const details = document.createElement("details"),
       summary = document.createElement("summary");
-    summary.textContent = `Other Bluetooth devices (${others.length})`;
+    summary.textContent = t("Other Bluetooth devices ({count})", {count: others.length});
     details.append(summary);
     others.forEach((device) => add(device, details));
     $("devices").append(details);
@@ -311,17 +314,17 @@ function renderCatalog(matching) {
   const grid = $('effect-grid');
   grid.replaceChildren();
   previewEntries = [];
-  $('effect-count').textContent = `${matching.length} ${matching.length === 1 ? "program" : "programs"}`;
+  $('effect-count').textContent = t(matching.length === 1 ? '{count} program' : '{count} programs', {count: matching.length});
   matching.slice(0, catalogLimit).forEach(mode => {
     const button = document.createElement('button');
     button.className = 'effect-card'; button.value = mode.id;
-    button.setAttribute('aria-label', `Preview ${mode.name}`);
+    button.setAttribute('aria-label', t('Preview {name}', {name: mode.name}));
     button.setAttribute('aria-pressed', String(String(mode.id) === String($('effect').value)));
     const canvas = document.createElement('canvas');
     canvas.width = 240; canvas.height = 60;
     canvas.setAttribute('aria-hidden', 'true');
     const title = document.createElement('strong'); title.textContent = mode.name;
-    const detail = document.createElement('span'); detail.textContent = `${categoryNames[mode.category] || mode.category} · ${String(mode.id).padStart(3, '0')}`;
+    const detail = document.createElement('span'); detail.textContent = `${t(categoryNames[mode.category] || mode.category)} · ${String(mode.id).padStart(3, '0')}`;
     button.append(canvas, title, detail);
     button.onclick = () => {
       $('effect').value = mode.id; heroPhase = 0;
@@ -332,7 +335,7 @@ function renderCatalog(matching) {
     if (typeof canvas.getContext === 'function') previewEntries.push({canvas, mode, ctx: canvas.getContext('2d')});
   });
   if (!matching.length) {
-    const empty = document.createElement('p'); empty.textContent = 'No matching effects. Try another color or name.';
+    const empty = document.createElement('p'); empty.textContent = t('No matching effects. Try another color or name.');
     grid.append(empty);
   }
   $('more-effects').hidden = matching.length <= catalogLimit;
@@ -342,7 +345,7 @@ function renderCategories() {
   const parent = $('effect-categories'); parent.replaceChildren();
   [['all', 'All'], ...Object.entries(categoryNames)].forEach(([key, name]) => {
     const button = document.createElement('button');
-    button.className = 'category-button'; button.textContent = name;
+    button.className = 'category-button'; button.textContent = t(name);
     button.setAttribute('aria-pressed', String(category === key));
     button.onclick = () => { category = key; catalogLimit = 24; renderCategories(); renderModes(); };
     parent.append(button);
@@ -442,7 +445,7 @@ function renderModes() {
   if (!matching.length) {
     const empty = document.createElement("option");
     empty.value = "";
-    empty.textContent = "No matching effects";
+    empty.textContent = t("No matching effects");
     $("effect").append(empty);
   }
   $("apply-effect").disabled = !matching.length;
@@ -554,7 +557,7 @@ $('start-capture').onclick = () => {
     $('preset-time').value = ''; dialogPhase = 0;
     selectPresetProgram(mode, speed);
     return result;
-  }, 'Starting capture…', `Running at ${speed}%. Pause when you find your frame.`);
+  }, 'Starting capture…', t('Running at {speed}%. Pause when you find your frame.', {speed}));
 };
 $('capture-pause').onclick = () => {
   if (busy || !state?.connected || !captureActive()) return;
@@ -573,6 +576,8 @@ $('preset-form').onsubmit = event => {
 };
 $('preset-time').oninput = () => { renderCapture(); renderPresetControls(); };
 async function initialize() {
+  globalThis.LotusI18n?.translatePage();
+  globalThis.LotusI18n?.setupPicker($("language"));
   try {
     const [current, availableModes, savedPresets] = await Promise.all([
       api("status"),
@@ -607,7 +612,7 @@ async function initialize() {
     if (current.notice) message(current.notice, true);
   } catch (error) {
     message(
-      `Cannot reach the local app: ${error.message}. Keep the launcher running, then reload.`,
+      t("Cannot reach the local app: {error}. Keep the launcher running, then reload.", {error: t(error.message)}),
       true,
     );
   }

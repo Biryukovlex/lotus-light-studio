@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
@@ -67,7 +68,8 @@ async def test_connect_pins_identity_and_saves_only_after_validation(control, cl
     factory.assert_called_once_with(device, timeout=15)
     assert status["connected"] is True
     assert json.loads(control.config_path.read_text())["address"] == device.address
-    assert control.config_path.stat().st_mode & 0o777 == 0o600
+    if os.name != "nt":  # POSIX permission bits do not apply on Windows
+        assert control.config_path.stat().st_mode & 0o777 == 0o600
     client_mock.write_gatt_char.assert_not_awaited()
 
 

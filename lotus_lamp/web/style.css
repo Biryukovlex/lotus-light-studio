@@ -79,6 +79,7 @@ fieldset { padding: 0; margin: 0; border: 0; min-width: 0; }
 label { display: block; color: var(--text); font-size: 13px; }
 .effect-controls > label { margin-bottom: 2px; }
 input[type="search"], input[type="text"], input[type="number"], select { min-height: 46px; width: 100%; min-width: 0; border: 1px solid var(--control-line); border-radius: 12px; background: var(--surface); color: var(--text); padding: 11px 14px; font-size: 13px; }
+select.language-picker { width: auto; min-height: 36px; padding: 6px 32px 6px 10px; background-position: right 10px center; font-size: 12px; }
 input::placeholder { color: var(--muted); opacity: 1; }
 select {
   appearance: none;

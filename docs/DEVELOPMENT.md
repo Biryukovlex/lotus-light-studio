@@ -40,6 +40,7 @@ self-contained Python distribution.
 | `scripts/build_macos_launcher.py` | Build/sign the local wrapper and optionally install it |
 | `tests/test_app.py` | API protections and actual outgoing protocol bytes via BLE mocks |
 | `tests/web_app.test.cjs` | Frontend pause/resume, failure and concurrency contracts |
+| `tests/i18n.test.cjs` | Language detection and Spanish translations, including server messages |
 | `docs/APP_DESIGN.md` | Visual direction and interaction requirements |
 | `docs/CUSTOM_CONTROL_INVESTIGATION.md` | Physical evidence and controller limitations |
 
@@ -144,7 +145,7 @@ Install development dependencies and run:
 uv pip install --python .venv/bin/python -e '.[app,dev]'
 .venv/bin/python -m pytest -o addopts='-q --tb=short'
 node --check lotus_lamp/web/app.js
-node --test tests/web_app.test.cjs
+node --test tests/web_app.test.cjs tests/i18n.test.cjs
 git diff --check
 uv build --wheel --out-dir dist
 ```

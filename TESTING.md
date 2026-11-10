@@ -12,7 +12,7 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -e '.[app,dev]'
 .venv/bin/python -m pytest -o addopts='-q --tb=short'
 node --check lotus_lamp/web/app.js
-node --test tests/web_app.test.cjs
+node --test tests/web_app.test.cjs tests/i18n.test.cjs
 git diff --check
 ```
 
@@ -30,6 +30,7 @@ The current checked snapshot has **168 Python tests passing, 4 skipped**, and **
 | `tests/test_config.py`, `tests/test_modes.py` | Library configuration and actual mode catalog |
 | `tests/test_scanner.py`, `tests/test_advanced_scanner.py` | Mocked discovery and GATT inspection |
 | `tests/web_app.test.cjs` | Pause/busy/error state, all catalog entries, preview clock, tabs, modal capture, saved speed, Escape/close, offline editing and draft isolation |
+| `tests/i18n.test.cjs` | Language detection, English fallback, Spanish interface and server messages, no untranslated `t()` keys |
 
 Tests use temporary files and Bluetooth mocks. They do not establish that physical LEDs displayed the requested output. The Node suite uses a DOM/canvas test harness rather than a real browser.
 
