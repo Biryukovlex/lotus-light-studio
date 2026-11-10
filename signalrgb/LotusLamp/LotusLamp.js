@@ -12,10 +12,11 @@ device:readonly
 LightingMode:readonly
 forcedColor:readonly
 shutdownColor:readonly
+shutdownAction:readonly
 */
 
 export function Name() { return "Lotus Lamp"; }
-export function Version() { return "1.1.0"; }
+export function Version() { return "1.2.0"; }
 export function Type() { return "network"; }
 export function Publisher() { return "Lotus Light Studio"; }
 export function Size() { return [1, 1]; }
@@ -28,12 +29,18 @@ export function ControllableParameters() {
 	return [
 		{"property":"LightingMode", "group":"lighting", "label":"Lighting Mode", "description":"Canvas follows the active effect; Forced uses a fixed color", "type":"combobox", "values":["Canvas", "Forced"], "default":"Canvas"},
 		{"property":"forcedColor", "group":"lighting", "label":"Forced Color", "min":"0", "max":"360", "type":"color", "default":"#009bde"},
-		{"property":"shutdownColor", "group":"lighting", "label":"Shutdown Color", "description":"Sent when SignalRGB closes or the PC sleeps", "min":"0", "max":"360", "type":"color", "default":"#000000"},
+		{"property":"shutdownAction", "group":"lighting", "label":"Shutdown Action", "description":"What the lamp does when SignalRGB closes, the PC shuts down or sleeps. It turns back on with the next effect color", "type":"combobox", "values":["Turn lamp off", "Use Shutdown Color"], "default":"Turn lamp off"},
+		{"property":"shutdownColor", "group":"lighting", "label":"Shutdown Color", "description":"Used when Shutdown Action is 'Use Shutdown Color'", "min":"0", "max":"360", "type":"color", "default":"#000000"},
 	];
 }
 
-// Packet: "LOTUS" | version 1 | R | G | B  (see lotus_lamp/signalrgb.py)
+// Packets (see lotus_lamp/signalrgb.py):
+//   color       "LOTUS" | 1 | R | G | B
+//   power off   "LOTUS" | 1 | 0x00
+//   final color "LOTUS" | 1 | 0x01 | R | G | B   (Shutdown Color)
 const HEADER = [0x4C, 0x4F, 0x54, 0x55, 0x53, 0x01];
+const CMD_POWER_OFF = 0x00;
+const CMD_FINAL_COLOR = 0x01;
 const DEFAULT_PORT = 8421;
 const KEEPALIVE_MS = 1000; // Resend an unchanged color once per second so the app shows "receiving".
 const CONTROLLER_ID = "lotus-lamp-local";
@@ -73,7 +80,12 @@ export function Render() {
 }
 
 export function Shutdown(SystemSuspending) {
-	send(SystemSuspending ? [0, 0, 0] : hexToRgb(shutdownColor));
+	// Runs when SignalRGB exits, Windows shuts down or the PC sleeps (SystemSuspending).
+	const packet = shutdownAction === "Use Shutdown Color"
+		? HEADER.concat([CMD_FINAL_COLOR], hexToRgb(shutdownColor))
+		: HEADER.concat([CMD_POWER_OFF]);
+	socket.write(packet, controller.ip, controller.port);
+	device.log(`Lotus Lamp: shutdown (${SystemSuspending ? "sleep" : "exit"}), ${shutdownAction}`);
 	socket.close();
 }
 

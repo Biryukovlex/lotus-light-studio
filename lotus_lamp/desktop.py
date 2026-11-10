@@ -34,6 +34,14 @@ def spanish_ui():
         return False
 
 
+def session_ending():
+    """True while Windows is shutting down, restarting or logging off (SM_SHUTTINGDOWN)."""
+    try:
+        return bool(ctypes.windll.user32.GetSystemMetrics(0x2000))
+    except (AttributeError, OSError):
+        return False
+
+
 def tray_labels():
     if spanish_ui():
         return {"open": f"Abrir {APP_NAME}", "exit": "Salir (libera el Bluetooth)"}
@@ -90,6 +98,7 @@ class ServerThread:
         self.ready = threading.Event()
         self.error = None
         self.runner = None
+        self.control = None
         self.thread = threading.Thread(target=self._run, name="lotus-server", daemon=True)
 
     def start(self, timeout=15):
@@ -105,7 +114,8 @@ class ServerThread:
 
         asyncio.set_event_loop(self.loop)
         try:
-            app = create_app(self.port, control=LampControl(self.config_path, self.signalrgb_port), on_show=self.on_show)
+            self.control = LampControl(self.config_path, self.signalrgb_port)
+            app = create_app(self.port, control=self.control, on_show=self.on_show)
             self.runner = web.AppRunner(app)
             self.loop.run_until_complete(self.runner.setup())
             self.loop.run_until_complete(web.TCPSite(self.runner, "127.0.0.1", self.port).start())
@@ -115,6 +125,16 @@ class ServerThread:
             return
         self.ready.set()
         self.loop.run_forever()
+
+    def session_ending(self):
+        """Windows is ending the session: let SignalRGB sync turn the lamp off (max ~4 s)."""
+        if not (self.control and self.loop.is_running()):
+            return
+        future = asyncio.run_coroutine_threadsafe(self.control.signalrgb.session_ending(), self.loop)
+        try:
+            future.result(timeout=4)
+        except Exception:
+            LOGGER.exception("Could not turn the lamp off at session end")
 
     def stop(self):
         """Run the app cleanup (stops SignalRGB, disconnects BLE), then end the loop."""
@@ -173,6 +193,11 @@ def main():
     def on_closing():
         if state["quitting"]:
             return True
+        if session_ending():
+            # Never cancel a Windows shutdown/logoff: that would block it.
+            state["quitting"] = True
+            server.session_ending()
+            return True
         window.hide()  # Keep running in the tray so SignalRGB sync continues.
         return False
 
@@ -181,8 +206,7 @@ def main():
     def quit_app(icon, _item=None):
         state["quitting"] = True
         icon.stop()
-        server.stop()
-        window.destroy()
+        window.destroy()  # The server is stopped once the window loop ends.
 
     labels = tray_labels()
     icon = pystray.Icon("lotus-light-studio", make_icon(64), APP_NAME, menu=pystray.Menu(
@@ -193,9 +217,11 @@ def main():
 
     # A persistent profile keeps the language choice (localStorage) between launches.
     webview.start(private_mode=False, storage_path=str(args.data_dir / "webview"))
-    if not state["quitting"]:  # Window closed by the system (logoff/shutdown).
-        icon.stop()
-        server.stop()
+    try:
+        icon.stop()  # Already stopped when Exit was used.
+    except Exception:
+        LOGGER.debug("Tray icon already stopped", exc_info=True)
+    server.stop()  # Stops SignalRGB sync and releases Bluetooth.
 
 
 if __name__ == "__main__":

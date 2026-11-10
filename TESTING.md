@@ -18,14 +18,14 @@ git diff --check
 
 The pinned lockfile covers app runtime dependencies. Development extras are installed separately. Alternatively, `uv pip install --python .venv/bin/python -e '.[app,dev]'` installs the contributor environment.
 
-The current checked snapshot has **183 Python tests passing, 4 skipped** (POSIX-only permission checks on Windows), and **32 frontend tests passing** (26 app, 6 i18n). These counts describe this snapshot, not a fixed acceptance threshold. No GitHub Actions workflow is currently committed; do not report local results as hosted CI results.
+The current checked snapshot has **190 Python tests passing, 4 skipped** (POSIX-only permission checks on Windows), and **32 frontend tests passing** (26 app, 6 i18n). These counts describe this snapshot, not a fixed acceptance threshold. No GitHub Actions workflow is currently committed; do not report local results as hosted CI results.
 
 ## What the suites verify
 
 | Tests | Scope |
 | --- | --- |
 | `tests/test_app.py` | Local HTTP protections, exact identity, service checks, outgoing BLE bytes, hold/resume, timed capture/replay, speed forwarding, cancellation and failures |
-| `tests/test_signalrgb.py` | SignalRGB packet format, loopback-only receiver, dedupe, burst coalescing, sustained 15/s limit, manual takeover, reconnect with backoff, busy port, remembered sync, HTTP toggle and the Windows show-window hook |
+| `tests/test_signalrgb.py` | SignalRGB packet format, loopback-only receiver, dedupe, burst coalescing, sustained 15/s limit, manual takeover, reconnect with backoff, busy port, remembered sync, HTTP toggle, power off/on and final-color instructions, the session-end safety net and the Windows show-window hook |
 | `tests/test_presets.py` | Validation, atomic saves, private permissions, persistence, legacy speed default and damaged-file preservation |
 | `tests/test_controller.py` | Library command construction and behavior using mocks |
 | `tests/test_config.py`, `tests/test_modes.py` | Library configuration and actual mode catalog |

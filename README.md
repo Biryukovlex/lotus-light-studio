@@ -77,7 +77,7 @@ How it works: the plugin sends the lamp's color as a 9-byte UDP packet (`LOTUS`,
 - At most **15 updates per second** reach the lamp; faster frames are merged into the latest one and repeated colors are not resent.
 - The receiver listens on this PC only. Use `--signalrgb-port` (and the port field on the plugin's Network card) if 8421 is taken.
 - Any manual control (color, effect, brightness, preset, scan, disconnect) turns sync off. If Bluetooth drops while syncing, the app reconnects automatically (waiting 2 s, then up to 30 s between attempts).
-- The plugin's **Lighting Mode** (Canvas/Forced) and **Shutdown Color** settings work like other SignalRGB devices.
+- The plugin's **Lighting Mode** (Canvas/Forced) works like other SignalRGB devices. **Shutdown Action** turns the lamp off when SignalRGB closes, the PC shuts down or sleeps (or applies a Shutdown Color); the next effect color turns it back on.
 
 Full guide, packet format, shutdown behavior and troubleshooting: [SignalRGB sync](docs/SIGNALRGB.md).
 

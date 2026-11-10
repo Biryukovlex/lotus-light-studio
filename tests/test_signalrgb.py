@@ -4,7 +4,7 @@ import asyncio
 import json
 import socket
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 import pytest_asyncio
@@ -12,7 +12,8 @@ from aiohttp.test_utils import TestClient, TestServer
 
 from lotus_lamp import DeviceConfig, LotusLamp
 from lotus_lamp.app import AppError, LampControl, create_app
-from lotus_lamp.signalrgb import RECONNECT_DELAYS, encode_packet, parse_packet
+from lotus_lamp.signalrgb import (RECONNECT_DELAYS, encode_final_color, encode_packet, encode_power_off,
+                                  parse_packet)
 
 HEADERS = {"Host": "127.0.0.1:8420", "X-Lotus-Local": "1", "Origin": "http://127.0.0.1:8420"}
 
@@ -66,8 +67,12 @@ async def until(predicate, timeout=2.0):
 
 def test_packet_format_round_trip_and_rejects_foreign_data():
     assert encode_packet(1, 2, 3) == b"LOTUS\x01\x01\x02\x03"
-    assert parse_packet(encode_packet(255, 0, 128)) == (255, 0, 128)
-    for bad in (b"", b"LOTUS\x01\x01\x02", b"LOTUS\x01\x01\x02\x03\x04", b"LOTUZ\x01\x01\x02\x03", b"LOTUS\x02\x01\x02\x03"):
+    assert parse_packet(encode_packet(255, 0, 128)) == ("color", (255, 0, 128))
+    assert encode_power_off() == b"LOTUS\x01\x00" and parse_packet(encode_power_off()) == ("off", None)
+    assert encode_final_color(1, 2, 3) == b"LOTUS\x01\x01\x01\x02\x03"
+    assert parse_packet(encode_final_color(9, 8, 7)) == ("final", (9, 8, 7))
+    for bad in (b"", b"LOTUS\x01", b"LOTUS\x01\x01\x02", b"LOTUS\x01\x07", b"LOTUS\x01\x02\x02\x03\x04",
+                b"LOTUS\x01\x01\x02\x03\x04\x05", b"LOTUZ\x01\x01\x02\x03", b"LOTUS\x02\x01\x02\x03"):
         assert parse_packet(bad) is None
 
 
@@ -262,3 +267,87 @@ async def test_show_window_hook_only_exists_in_desktop_app(tmp_path):
             response = await http.post("/api/show-window", json={}, headers=HEADERS)
             assert response.status == expected
     assert shown == [True]
+
+
+POWER_OFF = bytes([0x7E, 0x07, 0x04, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0xEF])
+POWER_ON = bytes([0x7E, 0x07, 0x04, 0x01, 0x00, 0xFF, 0xFF, 0x00, 0xEF])
+
+
+@pytest.mark.asyncio
+async def test_power_off_instruction_turns_lamp_off_and_next_color_turns_it_on(bridge_control):
+    control, client = bridge_control.control, bridge_control.client
+    control.set_signalrgb({"enabled": True})
+    bridge_control.send(10, 20, 30)
+    await until(lambda: control.signalrgb.forwarded == 1)
+    bridge_control.send(raw=encode_power_off())  # SignalRGB exit, PC shutdown or sleep.
+    await until(lambda: control.signalrgb.forwarded == 2)
+    assert colors_written(client)[-1] == POWER_OFF
+    assert control.values["power"] is False and control.signalrgb.shutdown_handled
+    bridge_control.send(10, 20, 30)  # Same color as before the PC slept: still sent, after power on.
+    await until(lambda: control.signalrgb.forwarded == 3)
+    assert colors_written(client)[-2:] == [POWER_ON, ble_frame(10, 20, 30)]
+    assert control.values["power"] is True
+
+
+@pytest.mark.asyncio
+async def test_final_color_is_written_even_if_unchanged(bridge_control):
+    control, client = bridge_control.control, bridge_control.client
+    control.set_signalrgb({"enabled": True})
+    bridge_control.send(0, 0, 0)
+    await until(lambda: control.signalrgb.forwarded == 1)
+    bridge_control.send(raw=encode_final_color(0, 0, 0))
+    await until(lambda: control.signalrgb.forwarded == 2)
+    assert colors_written(client) == [ble_frame(0, 0, 0), ble_frame(0, 0, 0)]
+    assert control.signalrgb.shutdown_handled
+
+
+@pytest.mark.asyncio
+async def test_shutdown_instruction_while_sync_off_never_fires_later(bridge_control):
+    control, client = bridge_control.control, bridge_control.client
+    bridge_control.send(raw=encode_power_off())  # e.g. SignalRGB closed while sync was off
+    await until(lambda: control.signalrgb.received == 1)
+    control.set_signalrgb({"enabled": True})
+    bridge_control.send(5, 5, 5)
+    await until(lambda: control.signalrgb.forwarded == 1)
+    assert POWER_OFF not in colors_written(client)
+
+
+@pytest.mark.asyncio
+async def test_session_end_turns_lamp_off_when_plugin_sent_nothing(bridge_control):
+    control, client = bridge_control.control, bridge_control.client
+    control.set_signalrgb({"enabled": True})
+    await control.signalrgb.session_ending(grace=0.1)
+    assert colors_written(client) == [POWER_OFF]
+    assert control.signalrgb.enabled is False
+
+
+@pytest.mark.asyncio
+async def test_session_end_respects_the_plugin_shutdown_color(bridge_control):
+    control, client = bridge_control.control, bridge_control.client
+    control.set_signalrgb({"enabled": True})
+    ending = asyncio.create_task(control.signalrgb.session_ending(grace=2))
+    bridge_control.send(raw=encode_final_color(1, 2, 3))  # Arrives during the grace period.
+    await asyncio.wait_for(ending, timeout=3)
+    assert colors_written(client) == [ble_frame(1, 2, 3)]
+
+
+@pytest.mark.asyncio
+async def test_session_end_does_nothing_without_sync_or_for_an_old_sleep(bridge_control):
+    control, client = bridge_control.control, bridge_control.client
+    await control.signalrgb.session_ending(grace=0.05)  # Sync off: the lamp is under manual control.
+    client.write_gatt_char.assert_not_awaited()
+    control.set_signalrgb({"enabled": True})
+    control.signalrgb.shutdown_handled_at = control.signalrgb.clock() - 3600  # Slept an hour ago.
+    await control.signalrgb.session_ending(grace=0.05)
+    assert colors_written(client) == [POWER_OFF]
+
+
+def test_session_ending_reads_windows_shutdown_flag():
+    from lotus_lamp import desktop
+    user32 = Mock()
+    with patch.object(desktop.ctypes, "windll", SimpleNamespace(user32=user32), create=True):
+        user32.GetSystemMetrics.return_value = 1
+        assert desktop.session_ending() is True
+        user32.GetSystemMetrics.assert_called_with(0x2000)
+        user32.GetSystemMetrics.return_value = 0
+        assert desktop.session_ending() is False

@@ -47,21 +47,28 @@ that colors are arriving.
 | Same color repeated | Not written again (the plugin also resends an unchanged color only once per second) |
 | Any manual control (color, effect, brightness, speed, Pause, capture, preset replay, scan, disconnect) | Sync turns off and the panel explains why; the manual action wins |
 | Bluetooth write fails or the link drops while syncing | The saved lamp is reconnected automatically, waiting 2, 4, 8, 16, then 30 s between attempts; the latest color is sent once connected. Outside SignalRGB sync, failed writes are still never retried |
+| SignalRGB closes, Windows shuts down or the PC sleeps | The plugin's **Shutdown Action** runs: by default the lamp gets the real power-off command; the next effect color turns it back on (for example after waking from sleep) |
 | App restarts (including the Windows Startup shortcut) | If sync was on when it last ran, it turns back on and reconnects the saved lamp when colors arrive. A manual control clears this preference |
 | UDP port busy | The app still starts; the panel shows the error and the switch is disabled |
 
 ## Shutdown, sleep and power loss
 
-The lamp keeps showing the last color it received; it does not switch itself off when data stops.
+The lamp has its own power supply: it does not switch itself off when data stops, so it is turned
+off explicitly. These rules apply while SignalRGB sync is on.
 
-- **SignalRGB closes or Windows shuts down normally:** the plugin's `Shutdown()` sends its
-  **Shutdown Color** (default black, so the LEDs go dark). Change it in the device's settings in
-  SignalRGB.
-- **PC goes to sleep:** the plugin sends black.
-- **Crash, forced shutdown or power cut:** the final packet may not reach the lamp, which then
-  stays on the last effect color until it is turned off another way.
-
-Black is an RGB value of 0,0,0, not the lamp's power-off command.
+- **SignalRGB closes, Windows shuts down or restarts, or the PC goes to sleep:** SignalRGB calls the
+  plugin's `Shutdown()`, which applies **Shutdown Action** (device settings in SignalRGB):
+  - **Turn lamp off** (default) sends the lamp's real power-off command. The next effect color
+    sends power-on first, so the lamp comes back by itself when SignalRGB starts again or the PC
+    wakes up.
+  - **Use Shutdown Color** sends the **Shutdown Color** instead; the lamp stays powered.
+- **Safety net in the Windows app (`.exe`):** when Windows ends the session, the app lets the
+  shutdown proceed (it never cancels it), waits up to 2 s for the plugin's instruction, and turns
+  the lamp off itself if none arrived (for example, SignalRGB was already closed). An instruction
+  the plugin sent is respected, including Shutdown Color. The web launcher (`.bat`) has no safety
+  net and relies on the plugin.
+- **Crash or power cut:** nothing can be sent; the lamp keeps the last color until it is turned off
+  another way.
 
 ## Plugin
 
@@ -69,8 +76,8 @@ Black is an RGB value of 0,0,0, not the lamp's power-off command.
 
 - One LED (`Size() = [1, 1]`). `Render()` reads `device.color(0, 0)` and sends it when it changes,
   plus a keepalive once per second.
-- Settings: **Lighting Mode** (Canvas follows the effect, Forced uses **Forced Color**) and
-  **Shutdown Color**, like other SignalRGB devices.
+- Settings: **Lighting Mode** (Canvas follows the effect, Forced uses **Forced Color**),
+  **Shutdown Action** (Turn lamp off / Use Shutdown Color) and **Shutdown Color**.
 - `DiscoveryService()` announces one controller (`id: lotus-lamp-local`, `127.0.0.1`) through
   `service.addController` / `announceController`. The official docs do not describe network
   discovery; this follows the pattern of SignalRGB's bundled WLED plugin.
@@ -80,15 +87,16 @@ Black is an RGB value of 0,0,0, not the lamp's power-off command.
 
 ## Packet format
 
-Each UDP datagram is exactly 9 bytes:
+Every UDP datagram starts with ASCII `LOTUS` and version `1`:
 
-| Bytes | Value |
-| --- | --- |
-| 0–4 | ASCII `LOTUS` |
-| 5 | Version `1` |
-| 6–8 | Red, green, blue (0–255) |
+| Packet | Bytes | Meaning |
+| --- | --- | --- |
+| Color | `LOTUS` `01` R G B (9 bytes) | Stream this color (rate-limited, repeats skipped) |
+| Power off | `LOTUS` `01` `00` (7 bytes) | Shutdown instruction: send the power-off command now |
+| Final color | `LOTUS` `01` `01` R G B (10 bytes) | Shutdown instruction: send this color now, even if unchanged |
 
-Anything else is ignored. The receiver binds to `127.0.0.1` only, so other machines on the network
+Shutdown instructions skip the rate limit and are ignored while sync is off, so they can never fire
+later. Anything else is ignored. The receiver binds to `127.0.0.1` only, so other machines on the network
 cannot change the lamp. `encode_packet` / `parse_packet` in `lotus_lamp/signalrgb.py` define the
 format. Any program on the same PC can drive the lamp the same way; for example, in Python:
 
@@ -134,7 +142,7 @@ POST requests use the same loopback, Origin and `X-Lotus-Local` protections as t
 | `lotus_lamp/signalrgb.py` | UDP receiver, rate limit, de-duplication, reconnect loop |
 | `lotus_lamp/app.py` | `/api/signalrgb`, status, manual-control takeover, remembered preference |
 | `lotus_lamp/web/` | SignalRGB panel and English/Spanish strings |
-| `tests/test_signalrgb.py` | Packet format, loopback binding, dedupe, burst coalescing, sustained rate, manual takeover, reconnect/backoff, busy port, remembered state, HTTP |
+| `tests/test_signalrgb.py` | Packet format, loopback binding, dedupe, burst coalescing, sustained rate, manual takeover, reconnect/backoff, busy port, remembered state, HTTP, power off/on, final color, session-end safety net |
 | `tests/web_app.test.cjs`, `tests/i18n.test.cjs` | Panel rendering, toggle requests, takeover message, translations |
 
 Physical check (9 November 2026, Windows 11, MELK-OA10): SignalRGB listed the plugin device; the
