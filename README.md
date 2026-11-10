@@ -48,6 +48,21 @@ Double-click **Launch Lotus Lamp.bat**. First launch creates `.venv`, installs t
 
 If the lamp does not appear in the scan, turn Bluetooth on in Windows Settings and make sure the lamp is not connected to the phone app. Do not pair the lamp in Windows Settings; the app connects to it directly.
 
+### Windows app (.exe)
+
+A native window with a system-tray icon, built with pywebview (WebView2) and PyInstaller:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build-windows.ps1
+```
+
+This creates `dist\Lotus Light Studio\Lotus Light Studio.exe` from the hash-pinned `requirements-desktop-windows.lock` (in a separate `.venv-build`), a **Desktop shortcut**, and a **Startup shortcut** that launches the app minimized to the tray when you sign in. A lamp saved by the web launcher is copied over once.
+
+- Closing the window keeps the app in the tray so SignalRGB sync continues. **Exit** in the tray menu stops it and releases Bluetooth.
+- Opening it again (shortcut or `.exe`) shows the running window instead of starting a second copy.
+- If SignalRGB sync was on when the app last ran, it turns back on at launch and reconnects the saved lamp.
+- Data and log: `%LOCALAPPDATA%\Lotus Light Studio`. Remove the shortcuts with `scripts\install-windows-shortcuts.ps1 -Remove`.
+
 ### SignalRGB sync (Windows)
 
 Let [SignalRGB](https://signalrgb.com) effects color the lamp alongside the rest of your RGB setup.

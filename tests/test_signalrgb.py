@@ -1,6 +1,7 @@
 """SignalRGB bridge contracts: loopback UDP in, throttled and de-duplicated BLE writes out."""
 
 import asyncio
+import json
 import socket
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -215,3 +216,49 @@ async def test_http_toggle_status_and_disconnect_turns_sync_off(tmp_path):
         assert (await response.json())["signalrgb"]["enabled"] is False
         response = await http.post("/api/signalrgb", json={"enabled": True}, headers=HEADERS)
         assert response.status == 409
+
+
+@pytest.mark.asyncio
+async def test_sync_preference_is_remembered_and_manual_control_forgets_it(bridge_control):
+    control = bridge_control.control
+    control.set_signalrgb({"enabled": True})
+    assert json.loads(control.settings_path.read_text()) == {"signalrgb": True}
+
+    # Next launch: sync resumes before the lamp is connected; the bridge reconnects it.
+    restarted = LampControl(control.config_path, signalrgb_port=0)
+    restarted.saved = control.saved
+    await restarted.signalrgb.start()
+    try:
+        restarted.resume_sync()
+        assert restarted.signalrgb.enabled is True
+    finally:
+        await restarted.signalrgb.stop()
+
+    await control.command({"action": "brightness", "value": 50})
+    assert json.loads(control.settings_path.read_text()) == {"signalrgb": False}
+
+
+@pytest.mark.asyncio
+async def test_resume_needs_a_saved_lamp_and_tolerates_bad_settings(tmp_path):
+    control = LampControl(tmp_path / "device.json", signalrgb_port=0)
+    await control.signalrgb.start()
+    try:
+        control.settings_path.write_text(json.dumps({"signalrgb": True}))
+        control.resume_sync()  # No saved lamp: nothing to reconnect.
+        assert control.signalrgb.enabled is False
+        control.settings_path.write_text("not json")
+        control.resume_sync()
+        assert control.signalrgb.enabled is False
+    finally:
+        await control.signalrgb.stop()
+
+
+@pytest.mark.asyncio
+async def test_show_window_hook_only_exists_in_desktop_app(tmp_path):
+    shown = []
+    for on_show, expected in ((None, 404), (lambda: shown.append(True), 200)):
+        control = LampControl(tmp_path / "device.json", signalrgb_port=0)
+        async with TestClient(TestServer(create_app(control=control, on_show=on_show))) as http:
+            response = await http.post("/api/show-window", json={}, headers=HEADERS)
+            assert response.status == expected
+    assert shown == [True]
