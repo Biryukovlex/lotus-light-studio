@@ -20,11 +20,13 @@ from .config import DeviceConfig
 from .controller import LotusLamp
 from .modes import get_all_mode_names, get_mode_category
 from .presets import MAX_PAUSE_MS, PresetStore
+from .signalrgb import DEFAULT_PORT as SIGNALRGB_PORT, SignalRGBBridge
 
 WEB_ROOT = Path(__file__).parent / "web"
 DEFAULT_CONFIG = Path(__file__).resolve().parent.parent / ".local" / "app-device.json"
 CONTROL = web.AppKey("control", object)
 PORT = web.AppKey("port", int)
+ON_SHOW = web.AppKey("on_show", object)
 LOGGER = logging.getLogger(__name__)
 
 
@@ -43,7 +45,7 @@ def integer(value, minimum, maximum, label):
 class LampControl:
     """One event loop and one lock own all BLE operations and the active lamp."""
 
-    def __init__(self, config_path=DEFAULT_CONFIG):
+    def __init__(self, config_path=DEFAULT_CONFIG, signalrgb_port=SIGNALRGB_PORT):
         self.config_path = Path(config_path)
         self.saved = None
         self.lamp = None
@@ -54,6 +56,8 @@ class LampControl:
         self.presets = PresetStore(self.config_path.with_suffix(".presets.json"))
         self.playback_task = None
         self.capture = None
+        self.signalrgb = SignalRGBBridge(self, signalrgb_port)
+        self.settings_path = self.config_path.with_suffix(".settings.json")
         try:
             if self.config_path.exists():
                 self.saved = DeviceConfig.from_dict(json.loads(self.config_path.read_text()))
@@ -79,9 +83,11 @@ class LampControl:
             "notice": self.notice,
             "capture": capture,
             "capabilities": {"spatial_flow": False, "segments": False},
+            "signalrgb": self.signalrgb.status(),
         }
 
     async def scan(self):
+        self.stop_sync()
         async with self.lock:
             await self.cancel_playback()
             found = await asyncio.wait_for(
@@ -135,6 +141,7 @@ class LampControl:
         integer(speed, 0, 100, "Capture speed")
         if pause_ms is not None:
             integer(pause_ms, 0, MAX_PAUSE_MS, "Pause time (ms)")
+        self.stop_sync()
         async with self.lock:
             # Acquire ownership before cancelling: never interrupt an in-flight
             # BLE write and leave its successful state update unrecorded.
@@ -179,6 +186,45 @@ class LampControl:
         except Exception:
             self.notice = "Timed playback failed. Reconnect before trying again; it was not replayed."
             LOGGER.exception("Timed playback failed")
+
+    def set_signalrgb(self, data):
+        enabled = data.get("enabled")
+        if type(enabled) is not bool:
+            raise AppError("SignalRGB sync must be true or false.")
+        if not enabled:
+            self.signalrgb.disable()
+            self.remember_sync(False)
+            return self.status()
+        if not self.connected:
+            raise AppError("Connect to your lamp first.", 409)
+        try:
+            self.signalrgb.enable()
+        except RuntimeError as exc:
+            raise AppError(str(exc), 503) from exc
+        self.remember_sync(True)
+        return self.status()
+
+    def stop_sync(self):
+        """A manual action takes over: stop SignalRGB sync and do not resume it at next launch."""
+        if self.signalrgb.enabled:
+            self.signalrgb.disable()
+            self.remember_sync(False)
+
+    def remember_sync(self, enabled):
+        try:
+            self.settings_path.parent.mkdir(parents=True, exist_ok=True)
+            self.settings_path.write_text(json.dumps({"signalrgb": enabled}))
+        except OSError:
+            LOGGER.warning("Could not save SignalRGB preference", exc_info=True)
+
+    def resume_sync(self):
+        """At startup, re-enable sync if it was on last time; the bridge reconnects the saved lamp."""
+        try:
+            wanted = json.loads(self.settings_path.read_text()).get("signalrgb") is True
+        except (OSError, ValueError, AttributeError):
+            return
+        if wanted and self.saved and self.signalrgb.listening:
+            self.signalrgb.enable()
 
     def preset_list(self):
         return {"presets": self.presets.items, "notice": self.presets.error}
@@ -269,6 +315,8 @@ class LampControl:
         else:
             raise AppError("Unknown lamp command.")
         capturing = action == "hold" and value is True
+        # A manual control always wins over SignalRGB streaming.
+        self.stop_sync()
         async with self.lock:
             await self.cancel_playback(preserve_capture=capturing)
             if not self.connected:
@@ -330,7 +378,7 @@ async def index(request):
 
 async def asset(request):
     name = request.match_info["name"]
-    if name not in {"app.js", "style.css", "favicon.svg"}:
+    if name not in {"app.js", "i18n.js", "style.css", "favicon.svg"}:
         raise web.HTTPNotFound()
     return web.FileResponse(WEB_ROOT / name)
 
@@ -359,6 +407,7 @@ async def action(request):
     if operation == "connect":
         return web.json_response(await control.connect(data))
     if operation == "disconnect":
+        control.stop_sync()
         async with control.lock:
             await control.disconnect()
         return web.json_response(control.status())
@@ -366,6 +415,16 @@ async def action(request):
         return web.json_response(await control.command(data))
     if operation == "capture":
         return web.json_response(await control.start_capture(data.get("mode"), speed=data.get("speed", 100)))
+    if operation == "show-window":
+        # Used by a second desktop launch to raise the running window.
+        on_show = request.app.get(ON_SHOW)
+        if not on_show:
+            raise web.HTTPNotFound()
+        on_show()
+        return web.json_response({"shown": True})
+    if operation == "signalrgb":
+        async with control.lock:
+            return web.json_response(control.set_signalrgb(data))
     if operation == "preset-save":
         return web.json_response(control.save_preset(data))
     if operation == "preset-delete":
@@ -382,10 +441,12 @@ async def action(request):
     raise web.HTTPNotFound()
 
 
-def create_app(port=8420, config_path=DEFAULT_CONFIG, control=None):
+def create_app(port=8420, config_path=DEFAULT_CONFIG, control=None, on_show=None):
     app = web.Application(middlewares=[local_only], client_max_size=4096)
     app[PORT] = port
     app[CONTROL] = control if control is not None else LampControl(config_path)
+    if on_show:
+        app[ON_SHOW] = on_show
     app.router.add_get("/", index)
     app.router.add_get("/assets/{name}", asset)
     app.router.add_get("/api/status", status)
@@ -393,9 +454,15 @@ def create_app(port=8420, config_path=DEFAULT_CONFIG, control=None):
     app.router.add_get("/api/presets", presets)
     app.router.add_post("/api/{operation}", action)
 
+    async def startup(application):
+        await application[CONTROL].signalrgb.start()
+        application[CONTROL].resume_sync()
+
     async def cleanup(application):
+        await application[CONTROL].signalrgb.stop()
         await application[CONTROL].disconnect()
 
+    app.on_startup.append(startup)
     app.on_cleanup.append(cleanup)
     return app
 
@@ -405,9 +472,11 @@ def main():
     parser.add_argument("--port", type=int, default=8420)
     parser.add_argument("--no-browser", action="store_true")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    parser.add_argument("--signalrgb-port", type=int, default=SIGNALRGB_PORT,
+                        help="Loopback UDP port for the SignalRGB plugin (default %(default)s)")
     args = parser.parse_args()
-    if not 1024 <= args.port <= 65535:
-        parser.error("Choose a port from 1024 to 65535.")
+    if not 1024 <= args.port <= 65535 or not 1024 <= args.signalrgb_port <= 65535:
+        parser.error("Choose ports from 1024 to 65535.")
     url = f"http://127.0.0.1:{args.port}"
     try:
         with urlopen(url + "/api/status", timeout=1) as response:
@@ -419,7 +488,7 @@ def main():
             return
     except (URLError, OSError, ValueError):
         pass
-    app = create_app(args.port, args.config)
+    app = create_app(args.port, control=LampControl(args.config, args.signalrgb_port))
     if not args.no_browser:
         async def open_browser(application):
             asyncio.get_running_loop().call_later(0.5, webbrowser.open, url)

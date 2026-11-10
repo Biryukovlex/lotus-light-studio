@@ -1,6 +1,7 @@
 """Preset persistence without Bluetooth or user files."""
 
 import json
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,7 +15,8 @@ def test_roundtrip_update_delete_and_private_permissions(tmp_path):
     store = PresetStore(path)
     first = store.save({"name": " Midnight ", "mode": 0, "pause_ms": 0})
     assert first["name"] == "Midnight"
-    assert path.stat().st_mode & 0o777 == 0o600
+    if os.name != "nt":  # POSIX permission bits do not apply on Windows
+        assert path.stat().st_mode & 0o777 == 0o600
     restored = PresetStore(path)
     assert restored.items == [first]
     updated = restored.save({**first, "pause_ms": 258, "name": "Afterglow"})

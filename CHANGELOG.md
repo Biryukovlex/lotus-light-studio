@@ -1,5 +1,15 @@
 # Changelog
 
+## Windows, Spanish interface and SignalRGB sync — 9 November 2026
+
+Contributed by [Jose Duarte](https://github.com/josegduarte96).
+
+- Added Windows support: `Launch Lotus Lamp.bat` with a hash-pinned `requirements-app-windows.lock`, line-ending rules and POSIX-only permission tests skipped on Windows.
+- Added a Spanish interface with a language picker (`lotus_lamp/web/i18n.js`), including translated server messages.
+- Added SignalRGB sync: a SignalRGB network plugin (`signalrgb/LotusLamp`) sends the whole-lamp color over loopback UDP; the app writes it over BLE at up to 15 updates/s without repeats, reconnects the lamp if the link drops, and hands control back on any manual action. See [docs/SIGNALRGB.md](docs/SIGNALRGB.md).
+- SignalRGB **Shutdown Action**: the lamp is powered off when SignalRGB closes, Windows shuts down or the PC sleeps, and powered back on by the next effect color. The Windows app adds a session-end safety net and no longer cancels a Windows shutdown when it hides to the tray.
+- Added a native Windows app (pywebview + PyInstaller) with a tray icon, single instance, Desktop and Startup shortcuts, and remembered sync state.
+
 ## Local app development — 26 October 2026
 
 - Added the loopback-only neon browser app and macOS launcher, with pinned runtime dependencies.

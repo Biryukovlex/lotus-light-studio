@@ -4,6 +4,8 @@ This fork adds a local browser app to Wayne Porter's Bluetooth library. The Pyth
 server talks directly to the lamp; the browser does not need Web Bluetooth or a
 cloud service. The server binds only to `127.0.0.1`.
 
+On Windows, use **Launch Lotus Lamp.bat** or build the Windows app; see the [README](README.md#windows). To drive the lamp from SignalRGB effects, see [SignalRGB sync](docs/SIGNALRGB.md).
+
 ## Start on macOS
 
 Double-click **Launch Lotus Lamp.command**. Keep its terminal window open while

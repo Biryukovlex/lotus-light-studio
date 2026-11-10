@@ -12,24 +12,26 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -e '.[app,dev]'
 .venv/bin/python -m pytest -o addopts='-q --tb=short'
 node --check lotus_lamp/web/app.js
-node --test tests/web_app.test.cjs
+node --test tests/web_app.test.cjs tests/i18n.test.cjs
 git diff --check
 ```
 
 The pinned lockfile covers app runtime dependencies. Development extras are installed separately. Alternatively, `uv pip install --python .venv/bin/python -e '.[app,dev]'` installs the contributor environment.
 
-The current checked snapshot has **168 Python tests passing, 4 skipped**, and **23 frontend tests passing**. These counts describe this snapshot, not a fixed acceptance threshold. No GitHub Actions workflow is currently committed; do not report local results as hosted CI results.
+The current checked snapshot has **190 Python tests passing, 4 skipped** (POSIX-only permission checks on Windows), and **32 frontend tests passing** (26 app, 6 i18n). These counts describe this snapshot, not a fixed acceptance threshold. No GitHub Actions workflow is currently committed; do not report local results as hosted CI results.
 
 ## What the suites verify
 
 | Tests | Scope |
 | --- | --- |
 | `tests/test_app.py` | Local HTTP protections, exact identity, service checks, outgoing BLE bytes, hold/resume, timed capture/replay, speed forwarding, cancellation and failures |
+| `tests/test_signalrgb.py` | SignalRGB packet format, loopback-only receiver, dedupe, burst coalescing, sustained 15/s limit, manual takeover, reconnect with backoff, busy port, remembered sync, HTTP toggle, power off/on and final-color instructions, the session-end safety net and the Windows show-window hook |
 | `tests/test_presets.py` | Validation, atomic saves, private permissions, persistence, legacy speed default and damaged-file preservation |
 | `tests/test_controller.py` | Library command construction and behavior using mocks |
 | `tests/test_config.py`, `tests/test_modes.py` | Library configuration and actual mode catalog |
 | `tests/test_scanner.py`, `tests/test_advanced_scanner.py` | Mocked discovery and GATT inspection |
-| `tests/web_app.test.cjs` | Pause/busy/error state, all catalog entries, preview clock, tabs, modal capture, saved speed, Escape/close, offline editing and draft isolation |
+| `tests/web_app.test.cjs` | Pause/busy/error state, all catalog entries, preview clock, tabs, modal capture, saved speed, Escape/close, offline editing, draft isolation and the SignalRGB panel |
+| `tests/i18n.test.cjs` | Language detection, English fallback, Spanish interface and server messages, no untranslated `t()` keys |
 
 Tests use temporary files and Bluetooth mocks. They do not establish that physical LEDs displayed the requested output. The Node suite uses a DOM/canvas test harness rather than a real browser.
 
@@ -56,7 +58,11 @@ Check the actual page as well as the harness:
 - Saved recipes survive reload/restart. Unrelated status polls do not overwrite editor fields.
 - Check narrow and desktop layouts, reduced motion, dropdown arrows, footer link and browser errors.
 
+On Windows, use `.venv\Scripts\python.exe` in place of `.venv/bin/python`, and `requirements-app-windows.lock` in place of `requirements-app.lock`.
+
 ## Physical verification boundary
+
+SignalRGB sync was checked with real hardware as described in [docs/SIGNALRGB.md](docs/SIGNALRGB.md#code-and-tests). Re-check it after changing the plugin or bridge: SignalRGB lists the device, counters rise with an effect applied, and the lamp follows.
 
 Obtain permission before disturbing a held frame: exact restoration is unavailable. Use a named device, preserve known settings and record what the observer actually sees. A successful write or host timer is not proof of a pixel frame.
 

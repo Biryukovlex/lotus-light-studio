@@ -1,0 +1,2 @@
+# Build-only tools for scripts/build-windows.ps1 (compiled into requirements-desktop-windows.lock).
+pyinstaller>=6.10
