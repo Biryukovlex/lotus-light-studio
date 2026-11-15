@@ -45,6 +45,7 @@ that colors are arriving.
 | Sync off | Packets are counted (so the panel can show "receiving") but never written to the lamp |
 | Frames faster than 15/s | Merged: only the newest color is written when the next slot opens |
 | Same color repeated | Not written again (the plugin also resends an unchanged color only once per second) |
+| Sync is enabled during a preset replay/capture or after Pause | The old preset timer is cancelled and its paused state is cleared; the first successful color update marks playback as running |
 | Any manual control (color, effect, brightness, speed, Pause, capture, preset replay, scan, disconnect) | Sync turns off and the panel explains why; the manual action wins |
 | Bluetooth write fails or the link drops while syncing | The saved lamp is reconnected automatically, waiting 2, 4, 8, 16, then 30 s between attempts; the latest color is sent once connected. Outside SignalRGB sync, failed writes are still never retried |
 | SignalRGB closes, Windows shuts down or the PC sleeps | The plugin's **Shutdown Action** runs: by default the lamp gets the real power-off command; the next effect color turns it back on (for example after waking from sleep) |
@@ -70,6 +71,10 @@ off explicitly. These rules apply while SignalRGB sync is on.
   net and relies on the plugin.
 - **Crash or power cut:** nothing can be sent; the lamp keeps the last color until it is turned off
   another way.
+
+The shutdown fallback only acts for the sync session that started it. Disabling
+sync or using a manual control during its grace period cancels that pending action;
+turning sync back on starts a new session and does not revive the old shutdown.
 
 ## Plugin
 

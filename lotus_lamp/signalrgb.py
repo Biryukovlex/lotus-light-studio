@@ -76,6 +76,7 @@ class SignalRGBBridge:
         self.rate = rate
         self.clock = clock
         self.enabled = False
+        self._generation = 0
         self.latest = None
         self.sent = None
         self.last_packet_at = None
@@ -161,27 +162,37 @@ class SignalRGBBridge:
         """
         if not self.enabled:
             return
+        generation = self._generation
+
+        def owns_session():
+            return self.enabled and self._generation == generation
+
         loop = asyncio.get_running_loop()
         deadline = loop.time() + grace
-        while not self.shutdown_handled and loop.time() < deadline:
+        while owns_session() and not self.shutdown_handled and loop.time() < deadline:
             await asyncio.sleep(0.05)
-        if self.shutdown_handled or not self.control.connected:
+        if not owns_session() or self.shutdown_handled or not self.control.connected:
             return
-        LOGGER.info("No shutdown instruction from SignalRGB; turning the lamp off")
-        self.disable()
         async with self.control.lock:
-            if self.control.connected and not self.lamp_off:
-                await self.control.write("power_off")
-                self.control.values["power"] = False
-                self.lamp_off = True
+            # A manual action or a newer sync session may have taken over while
+            # the grace timer or the BLE lock was awaited.
+            if not owns_session() or self.shutdown_handled or not self.control.connected or self.lamp_off:
+                return
+            LOGGER.info("No shutdown instruction from SignalRGB; turning the lamp off")
+            self.disable()
+            await self.control.write("power_off")
+            self.control.values["power"] = False
+            self.lamp_off = True
 
     def enable(self):
         if not self.listening:
             raise RuntimeError(self.error or "SignalRGB receiver is not running.")
+        self._generation += 1
         self.enabled = True
         self.sent = None  # The lamp may show something else; resend the current color.
         self.pending = None
         self.power_on_needed = True
+        self.shutdown_handled_at = None
         self._stopped.clear()
         self._wakeup.set()
         if self.task is None or self.task.done():
@@ -189,6 +200,7 @@ class SignalRGBBridge:
 
     def disable(self):
         """Stop forwarding. Never cancels an in-flight BLE write: the loop exits on its own."""
+        self._generation += 1
         self.enabled = False
         self._stopped.set()
         self._wakeup.set()
@@ -239,6 +251,7 @@ class SignalRGBBridge:
                         self.sent = None
                         continue
                     self.control.values["color"] = "#%02x%02x%02x" % color
+                    self.control.values["hold"] = False
                     self.control.values.pop("mode", None)
                 self.sent = color
                 self.forwarded += 1
@@ -262,6 +275,7 @@ class SignalRGBBridge:
                 else:
                     await self.control.write("set_rgb", *color, delay=0)
                     self.control.values["color"] = "#%02x%02x%02x" % color
+                    self.control.values["hold"] = False
                     self.control.values.pop("mode", None)
             except Exception:
                 LOGGER.warning("SignalRGB shutdown instruction failed", exc_info=True)

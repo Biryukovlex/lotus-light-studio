@@ -89,6 +89,7 @@ class LampControl:
     async def scan(self):
         self.stop_sync()
         async with self.lock:
+            self.stop_sync()
             await self.cancel_playback()
             found = await asyncio.wait_for(
                 BleakScanner.discover(timeout=7, return_adv=True), timeout=12
@@ -145,6 +146,7 @@ class LampControl:
         async with self.lock:
             # Acquire ownership before cancelling: never interrupt an in-flight
             # BLE write and leave its successful state update unrecorded.
+            self.stop_sync()
             await self.cancel_playback()
             if not self.connected:
                 raise AppError("Connect to your lamp first.", 409)
@@ -187,25 +189,33 @@ class LampControl:
             self.notice = "Timed playback failed. Reconnect before trying again; it was not replayed."
             LOGGER.exception("Timed playback failed")
 
-    def set_signalrgb(self, data):
+    async def set_signalrgb(self, data):
         enabled = data.get("enabled")
         if type(enabled) is not bool:
             raise AppError("SignalRGB sync must be true or false.")
-        if not enabled:
-            self.signalrgb.disable()
-            self.remember_sync(False)
+        async with self.lock:
+            if not enabled:
+                self.signalrgb.disable()
+                self.remember_sync(False)
+                return self.status()
+            if not self.connected:
+                raise AppError("Connect to your lamp first.", 409)
+            # Reject an unavailable receiver before disrupting the current program.
+            if not self.signalrgb.listening:
+                raise AppError(self.signalrgb.error or "SignalRGB receiver is not running.", 503)
+            await self.cancel_playback()
+            try:
+                self.signalrgb.enable()
+            except RuntimeError as exc:
+                raise AppError(str(exc), 503) from exc
+            # The old paused program no longer owns playback. Record Playing only
+            # after the bridge successfully submits its first color.
+            self.values.pop("hold", None)
+            self.remember_sync(True)
             return self.status()
-        if not self.connected:
-            raise AppError("Connect to your lamp first.", 409)
-        try:
-            self.signalrgb.enable()
-        except RuntimeError as exc:
-            raise AppError(str(exc), 503) from exc
-        self.remember_sync(True)
-        return self.status()
 
     def stop_sync(self):
-        """A manual action takes over: stop SignalRGB sync and do not resume it at next launch."""
+        """Stop sync now and recheck under the BLE lock for queued manual actions."""
         if self.signalrgb.enabled:
             self.signalrgb.disable()
             self.remember_sync(False)
@@ -318,6 +328,7 @@ class LampControl:
         # A manual control always wins over SignalRGB streaming.
         self.stop_sync()
         async with self.lock:
+            self.stop_sync()
             await self.cancel_playback(preserve_capture=capturing)
             if not self.connected:
                 raise AppError("Connect to your lamp first.", 409)
@@ -409,6 +420,7 @@ async def action(request):
     if operation == "disconnect":
         control.stop_sync()
         async with control.lock:
+            control.stop_sync()
             await control.disconnect()
         return web.json_response(control.status())
     if operation == "command":
@@ -423,8 +435,7 @@ async def action(request):
         on_show()
         return web.json_response({"shown": True})
     if operation == "signalrgb":
-        async with control.lock:
-            return web.json_response(control.set_signalrgb(data))
+        return web.json_response(await control.set_signalrgb(data))
     if operation == "preset-save":
         return web.json_response(control.save_preset(data))
     if operation == "preset-delete":

@@ -3,6 +3,7 @@
 import asyncio
 import json
 import socket
+import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -57,6 +58,19 @@ async def bridge_control(tmp_path):
     await control.signalrgb.stop()
 
 
+@pytest.fixture
+def fast_bridge(bridge_control, monkeypatch):
+    """Keep real command construction, but skip controller cooldowns on mocked BLE."""
+    control, client = bridge_control.control, bridge_control.client
+
+    async def send(command, delay=0.1):
+        control.lamp.last_write_started = time.monotonic()
+        await client.write_gatt_char(control.lamp.config.write_char_uuid, command, response=False)
+
+    monkeypatch.setattr(control.lamp, "_send_command", send)
+    return bridge_control
+
+
 async def until(predicate, timeout=2.0):
     deadline = asyncio.get_running_loop().time() + timeout
     while not predicate():
@@ -94,7 +108,7 @@ async def test_packets_ignored_while_disabled(bridge_control):
 @pytest.mark.asyncio
 async def test_color_forwarded_once_and_repeats_dropped(bridge_control):
     control, client = bridge_control.control, bridge_control.client
-    control.set_signalrgb({"enabled": True})
+    await control.set_signalrgb({"enabled": True})
     for _ in range(5):
         bridge_control.send(200, 100, 50)
     await until(lambda: control.signalrgb.received == 5)
@@ -108,7 +122,7 @@ async def test_color_forwarded_once_and_repeats_dropped(bridge_control):
 @pytest.mark.asyncio
 async def test_bursts_are_coalesced_to_rate_limit_and_end_on_latest(bridge_control):
     control, client = bridge_control.control, bridge_control.client
-    control.set_signalrgb({"enabled": True})
+    await control.set_signalrgb({"enabled": True})
     for value in range(60):  # A 60 fps burst, much faster than the 15/s limit.
         bridge_control.send(value, 0, 0)
     await until(lambda: control.signalrgb.received == 60)
@@ -121,7 +135,7 @@ async def test_bursts_are_coalesced_to_rate_limit_and_end_on_latest(bridge_contr
 @pytest.mark.asyncio
 async def test_sustained_stream_never_exceeds_rate(bridge_control):
     control, client = bridge_control.control, bridge_control.client
-    control.set_signalrgb({"enabled": True})
+    await control.set_signalrgb({"enabled": True})
     loop = asyncio.get_running_loop()
     started = loop.time()
     value = 0
@@ -135,7 +149,7 @@ async def test_sustained_stream_never_exceeds_rate(bridge_control):
 @pytest.mark.asyncio
 async def test_manual_command_disables_sync_and_stops_forwarding(bridge_control):
     control, client = bridge_control.control, bridge_control.client
-    control.set_signalrgb({"enabled": True})
+    await control.set_signalrgb({"enabled": True})
     bridge_control.send(1, 1, 1)
     await until(lambda: control.signalrgb.forwarded == 1)
     await control.command({"action": "color", "value": "#ffffff"})
@@ -150,14 +164,14 @@ async def test_manual_command_disables_sync_and_stops_forwarding(bridge_control)
 async def test_enable_requires_connection_and_listening_receiver(tmp_path):
     control = LampControl(tmp_path / "device.json", signalrgb_port=0)
     with pytest.raises(AppError) as error:
-        control.set_signalrgb({"enabled": True})
+        await control.set_signalrgb({"enabled": True})
     assert error.value.status == 409
     attach_lamp(control, make_client())
     with pytest.raises(AppError) as error:  # Receiver never started.
-        control.set_signalrgb({"enabled": True})
+        await control.set_signalrgb({"enabled": True})
     assert error.value.status == 503
     with pytest.raises(AppError):
-        control.set_signalrgb({"enabled": "yes"})
+        await control.set_signalrgb({"enabled": "yes"})
 
 
 @pytest.mark.asyncio
@@ -184,7 +198,7 @@ async def test_write_failure_reconnects_saved_lamp_and_resends_latest(bridge_con
         attach_lamp(control, replacement)
 
     control.connect = AsyncMock(side_effect=reconnect)
-    control.set_signalrgb({"enabled": True})
+    await control.set_signalrgb({"enabled": True})
     bridge_control.send(5, 6, 7)
     await until(lambda: control.signalrgb.forwarded == 1)
     control.connect.assert_awaited_once()
@@ -196,7 +210,7 @@ async def test_write_failure_reconnects_saved_lamp_and_resends_latest(bridge_con
 async def test_failed_reconnect_backs_off_and_disable_interrupts_wait(bridge_control):
     control = bridge_control.control
     control.connect = AsyncMock(side_effect=OSError("out of range"))
-    control.set_signalrgb({"enabled": True})
+    await control.set_signalrgb({"enabled": True})
     bridge_control.client.is_connected = False  # Link drops after sync starts.
     bridge_control.send(1, 2, 3)
     await until(lambda: control.connect.await_count == 1)
@@ -204,7 +218,7 @@ async def test_failed_reconnect_backs_off_and_disable_interrupts_wait(bridge_con
     assert control.connect.await_count == 1  # Waiting RECONNECT_DELAYS[0] seconds, not hammering.
     assert RECONNECT_DELAYS[0] >= 2
     assert control.status()["signalrgb"]["reconnecting"] is True
-    control.set_signalrgb({"enabled": False})
+    await control.set_signalrgb({"enabled": False})
     await asyncio.wait_for(control.signalrgb.task, timeout=1)
     assert control.status()["signalrgb"]["reconnecting"] is False
 
@@ -227,7 +241,7 @@ async def test_http_toggle_status_and_disconnect_turns_sync_off(tmp_path):
 @pytest.mark.asyncio
 async def test_sync_preference_is_remembered_and_manual_control_forgets_it(bridge_control):
     control = bridge_control.control
-    control.set_signalrgb({"enabled": True})
+    await control.set_signalrgb({"enabled": True})
     assert json.loads(control.settings_path.read_text()) == {"signalrgb": True}
 
     # Next launch: sync resumes before the lamp is connected; the bridge reconnects it.
@@ -277,7 +291,7 @@ POWER_ON = bytes([0x7E, 0x07, 0x04, 0x01, 0x00, 0xFF, 0xFF, 0x00, 0xEF])
 @pytest.mark.asyncio
 async def test_power_off_instruction_turns_lamp_off_and_next_color_turns_it_on(bridge_control):
     control, client = bridge_control.control, bridge_control.client
-    control.set_signalrgb({"enabled": True})
+    await control.set_signalrgb({"enabled": True})
     bridge_control.send(10, 20, 30)
     await until(lambda: control.signalrgb.forwarded == 1)
     bridge_control.send(raw=encode_power_off())  # SignalRGB exit, PC shutdown or sleep.
@@ -293,7 +307,7 @@ async def test_power_off_instruction_turns_lamp_off_and_next_color_turns_it_on(b
 @pytest.mark.asyncio
 async def test_final_color_is_written_even_if_unchanged(bridge_control):
     control, client = bridge_control.control, bridge_control.client
-    control.set_signalrgb({"enabled": True})
+    await control.set_signalrgb({"enabled": True})
     bridge_control.send(0, 0, 0)
     await until(lambda: control.signalrgb.forwarded == 1)
     bridge_control.send(raw=encode_final_color(0, 0, 0))
@@ -307,7 +321,7 @@ async def test_shutdown_instruction_while_sync_off_never_fires_later(bridge_cont
     control, client = bridge_control.control, bridge_control.client
     bridge_control.send(raw=encode_power_off())  # e.g. SignalRGB closed while sync was off
     await until(lambda: control.signalrgb.received == 1)
-    control.set_signalrgb({"enabled": True})
+    await control.set_signalrgb({"enabled": True})
     bridge_control.send(5, 5, 5)
     await until(lambda: control.signalrgb.forwarded == 1)
     assert POWER_OFF not in colors_written(client)
@@ -316,7 +330,7 @@ async def test_shutdown_instruction_while_sync_off_never_fires_later(bridge_cont
 @pytest.mark.asyncio
 async def test_session_end_turns_lamp_off_when_plugin_sent_nothing(bridge_control):
     control, client = bridge_control.control, bridge_control.client
-    control.set_signalrgb({"enabled": True})
+    await control.set_signalrgb({"enabled": True})
     await control.signalrgb.session_ending(grace=0.1)
     assert colors_written(client) == [POWER_OFF]
     assert control.signalrgb.enabled is False
@@ -325,7 +339,7 @@ async def test_session_end_turns_lamp_off_when_plugin_sent_nothing(bridge_contro
 @pytest.mark.asyncio
 async def test_session_end_respects_the_plugin_shutdown_color(bridge_control):
     control, client = bridge_control.control, bridge_control.client
-    control.set_signalrgb({"enabled": True})
+    await control.set_signalrgb({"enabled": True})
     ending = asyncio.create_task(control.signalrgb.session_ending(grace=2))
     bridge_control.send(raw=encode_final_color(1, 2, 3))  # Arrives during the grace period.
     await asyncio.wait_for(ending, timeout=3)
@@ -337,7 +351,7 @@ async def test_session_end_does_nothing_without_sync_or_for_an_old_sleep(bridge_
     control, client = bridge_control.control, bridge_control.client
     await control.signalrgb.session_ending(grace=0.05)  # Sync off: the lamp is under manual control.
     client.write_gatt_char.assert_not_awaited()
-    control.set_signalrgb({"enabled": True})
+    await control.set_signalrgb({"enabled": True})
     control.signalrgb.shutdown_handled_at = control.signalrgb.clock() - 3600  # Slept an hour ago.
     await control.signalrgb.session_ending(grace=0.05)
     assert colors_written(client) == [POWER_OFF]
@@ -378,3 +392,116 @@ async def test_lamp_powered_off_at_last_shutdown_is_turned_on_after_reboot(tmp_p
     finally:
         sender.close()
         await control.signalrgb.stop()
+
+
+@pytest.mark.asyncio
+async def test_sync_takeover_cancels_pending_preset_hold(fast_bridge):
+    control, client = fast_bridge.control, fast_bridge.client
+    await control.start_capture(138, pause_ms=80, speed=25)
+    await until(lambda: control.capture["stage"] == "running")
+    playback = control.playback_task
+    try:
+        await control.set_signalrgb({"enabled": True})
+        assert playback.cancelled()
+        assert control.capture["stage"] == "cancelled"
+        fast_bridge.send(10, 20, 30)
+        await until(lambda: control.signalrgb.forwarded == 1)
+        await asyncio.sleep(0.12)  # Beyond the superseded preset's deadline.
+        assert bytes.fromhex("7e040280ffffff00ef") not in colors_written(client)
+        assert control.values["hold"] is False
+    finally:
+        await control.cancel_playback()
+
+
+@pytest.mark.asyncio
+async def test_sync_takeover_clears_stale_paused_state(fast_bridge):
+    control = fast_bridge.control
+    control.values.update(hold=True, mode=138)
+    await control.set_signalrgb({"enabled": True})
+    assert control.values.get("hold") is not True
+    fast_bridge.send(40, 50, 60)
+    await until(lambda: control.signalrgb.forwarded == 1)
+    assert control.values["hold"] is False
+
+
+@pytest.mark.asyncio
+async def test_shutdown_grace_respects_later_manual_control(fast_bridge):
+    control, client = fast_bridge.control, fast_bridge.client
+    await control.set_signalrgb({"enabled": True})
+    ending = asyncio.create_task(control.signalrgb.session_ending(grace=0.15))
+    await asyncio.sleep(0.02)
+    await control.command({"action": "power", "value": True})
+    await ending
+    assert control.signalrgb.enabled is False
+    assert colors_written(client) == [POWER_ON]
+    assert control.values["power"] is True
+
+
+@pytest.mark.asyncio
+async def test_shutdown_fallback_rechecks_ownership_after_waiting_for_lock(fast_bridge):
+    control, client = fast_bridge.control, fast_bridge.client
+    await control.set_signalrgb({"enabled": True})
+    await control.lock.acquire()
+    try:
+        ending = asyncio.create_task(control.signalrgb.session_ending(grace=0))
+        await asyncio.sleep(0)  # Fallback reaches the lock while sync is still enabled.
+        control.stop_sync()
+    finally:
+        control.lock.release()
+    await ending
+    client.write_gatt_char.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_old_shutdown_grace_cannot_affect_a_new_sync_session(fast_bridge):
+    control, client = fast_bridge.control, fast_bridge.client
+    await control.set_signalrgb({"enabled": True})
+    ending = asyncio.create_task(control.signalrgb.session_ending(grace=0.15))
+    await asyncio.sleep(0.02)
+    await control.set_signalrgb({"enabled": False})
+    await control.set_signalrgb({"enabled": True})
+    await ending
+    assert control.signalrgb.enabled is True
+    client.write_gatt_char.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_manual_command_queued_during_sync_takeover_wins(fast_bridge, monkeypatch):
+    control = fast_bridge.control
+    entered, release = asyncio.Event(), asyncio.Event()
+    original_cancel = control.cancel_playback
+
+    async def cancel_playback(*args, **kwargs):
+        if asyncio.current_task() is enabling:
+            entered.set()
+            await release.wait()
+        await original_cancel(*args, **kwargs)
+
+    monkeypatch.setattr(control, "cancel_playback", cancel_playback)
+    enabling = asyncio.create_task(control.set_signalrgb({"enabled": True}))
+    await entered.wait()
+    manual = asyncio.create_task(control.command({"action": "power", "value": True}))
+    await asyncio.sleep(0)  # The manual action queues behind takeover's BLE lock.
+    release.set()
+    await asyncio.gather(enabling, manual)
+    assert control.signalrgb.enabled is False
+    assert json.loads(control.settings_path.read_text()) == {"signalrgb": False}
+
+
+@pytest.mark.asyncio
+async def test_unavailable_receiver_preserves_existing_playback(fast_bridge):
+    control = fast_bridge.control
+    await control.start_capture(138, pause_ms=60_000, speed=25)
+    await until(lambda: control.capture["stage"] == "running")
+    playback = control.playback_task
+    transport = control.signalrgb.transport
+    control.signalrgb.transport = None
+    try:
+        with pytest.raises(AppError) as error:
+            await control.set_signalrgb({"enabled": True})
+        assert error.value.status == 503
+        assert not playback.done()
+        assert control.capture["stage"] == "running"
+    finally:
+        control.signalrgb.transport = transport
+        await control.cancel_playback()
