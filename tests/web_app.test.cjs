@@ -13,12 +13,12 @@ const fullCatalog = Object.entries(modeNames).map(([id, name]) => ({
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
 async function app({connected = true, values = {}, animations = false, reducedMotion = false,
-  capture = null, savedPresets = [], catalog = [{id: 0, name: 'Auto Play', category: 'basic'}]} = {}) {
+  capture = null, savedPresets = [], catalog = [{id: 0, name: 'Auto Play', category: 'basic'}], signalrgb} = {}) {
   const elements = new Map();
   const frames = [];
   class Element {
     constructor() {
-      this.value = ''; this.children = []; this.attrs = {}; this.textContent = '';
+      this.value = ''; this.children = []; this.attrs = {}; this.textContent = ''; this.style = {};
       this.classList = { toggle() {} };
     }
     setAttribute(key, value) { this.attrs[key] = value; }
@@ -40,7 +40,7 @@ async function app({connected = true, values = {}, animations = false, reducedMo
   for (const [, id] of html.matchAll(/id="([\w-]+)"/g)) elements.set(id, new Element());
   for (const [id, value] of [['brightness', '75'], ['effect-speed', '25'], ['solid', '#82cba8'], ['capture-speed', '25']])
     elements.get(id).value = value;
-  const status = {connected, device: {name: 'Test lamp'}, saved: {name: 'Test lamp', address: 'test'}, values, capture};
+  const status = {connected, device: {name: 'Test lamp'}, saved: {name: 'Test lamp', address: 'test'}, values, capture, signalrgb};
   const requests = [];
   let commandResponse;
   const context = vm.createContext({
@@ -342,4 +342,46 @@ test('delete only changes local storage and updates the Custom count', async () 
   ui.elements.get('preset-list').children[0].children[2].children[2].onclick(); await tick();
   assert.equal(ui.requests[0].path,'/api/preset-delete');
   assert.equal(ui.elements.get('preset-count').textContent,'0');
+});
+
+const sync = (overrides = {}) => ({enabled: false, listening: true, port: 8421, rate: 15, receiving: false, color: null,
+  received: 0, forwarded: 0, reconnecting: false, error: null, ...overrides});
+
+test('SignalRGB switch posts the toggle and renders live state without lamp commands', async () => {
+  const ui = await app({signalrgb: sync()});
+  const toggle = ui.elements.get('signalrgb-toggle');
+  assert.equal(toggle.attrs['aria-checked'], 'false');
+  assert.equal(toggle.disabled, false);
+  ui.respondWith(() => ({ok: true, json: async () => ({...ui.status,
+    signalrgb: sync({enabled: true, receiving: true, color: '#120030', received: 40, forwarded: 12})})}));
+  toggle.onclick(); await tick(); await tick();
+  assert.deepEqual(ui.requests.map(request => [request.path, request.body]), [['/api/signalrgb', {enabled: true}]]);
+  assert.equal(toggle.attrs['aria-checked'], 'true');
+  assert.equal(toggle.textContent, 'On');
+  assert.equal(ui.elements.get('signalrgb-detail').textContent, 'Live. SignalRGB is coloring the lamp.');
+  assert.equal(ui.elements.get('signalrgb-swatch').style.background, '#120030');
+  assert.equal(ui.elements.get('signalrgb-stats').textContent, '40 received · 12 sent to lamp · max 15/s');
+  assert.equal(ui.elements.get('message').textContent, 'SignalRGB sync on.');
+});
+
+test('a manual control that stops sync explains why; turning it off yourself does not', async () => {
+  const ui = await app({signalrgb: sync({enabled: true})});
+  ui.evaluate(`renderState(${JSON.stringify({...ui.status, signalrgb: sync({enabled: false})})})`);
+  assert.equal(ui.elements.get('message').textContent, 'SignalRGB sync turned off because you used a manual control.');
+
+  const own = await app({signalrgb: sync({enabled: true})});
+  own.respondWith(() => ({ok: true, json: async () => ({...own.status, signalrgb: sync({enabled: false})})}));
+  own.elements.get('signalrgb-toggle').onclick(); await tick(); await tick();
+  assert.deepEqual(own.requests[0].body, {enabled: false});
+  assert.equal(own.elements.get('message').textContent, 'SignalRGB sync off.');
+});
+
+test('sync can be switched off while reconnecting but not on while disconnected', async () => {
+  const reconnecting = await app({connected: false, signalrgb: sync({enabled: true, reconnecting: true})});
+  assert.equal(reconnecting.elements.get('signalrgb-toggle').disabled, false);
+  assert.equal(reconnecting.elements.get('signalrgb-detail').textContent, 'Bluetooth link lost. Reconnecting to your lamp…');
+  const offline = await app({connected: false, signalrgb: sync()});
+  assert.equal(offline.elements.get('signalrgb-toggle').disabled, true);
+  const busyPort = await app({signalrgb: sync({listening: false, error: 'SignalRGB port 8421 is unavailable: in use. Close the other program using it and restart the app.'})});
+  assert.equal(busyPort.elements.get('signalrgb-toggle').disabled, true);
 });

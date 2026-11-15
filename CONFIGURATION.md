@@ -4,14 +4,15 @@
 
 The app controls one connected lamp at a time. Scan/select in the UI, or reconnect the exact saved device. It verifies the configured service and write-without-response characteristic before enabling commands. It does not fall back to another device with the same name.
 
-In a source checkout, private files live in `.local/`:
+In a source checkout, private files live in `.local/`. The Windows app (`.exe`) keeps them in `%LOCALAPPDATA%\Lotus Light Studio` instead, with its log:
 
 | File | Contents |
 | --- | --- |
 | `app-device.json` | One saved device: name, exact platform Bluetooth identity and GATT UUIDs |
 | `app-device.presets.json` | Versioned custom recipes, independent of the current connection |
+| `app-device.settings.json` | Whether [SignalRGB sync](docs/SIGNALRGB.md) was on, so it can resume at launch |
 
-Both files are ignored by Git. Successful saves use a temporary file, rename and mode 0600. Device save failure leaves the connection usable but shows a notice. Invalid preset files are preserved; edits are refused instead of overwriting them. Back up these two files yourself if you want to retain local settings. They are not firmware backups or factory defaults.
+These files are ignored by Git. Successful saves use a temporary file, rename and mode 0600. Device save failure leaves the connection usable but shows a notice. Invalid preset files are preserved; edits are refused instead of overwriting them. Back up these two files yourself if you want to retain local settings. They are not firmware backups or factory defaults.
 
 Choose a writable custom location with:
 
@@ -19,7 +20,7 @@ Choose a writable custom location with:
 .venv/bin/python -m lotus_lamp.app --config "$HOME/.local/share/lotus-light-studio/device.json"
 ```
 
-Presets then live alongside it as `device.presets.json`. The default location is relative to the installed package, not the shell's current directory. Use `--config` when running an installed wheel from a location you cannot write to. `--port 8421` changes the loopback port; `--no-browser` prevents automatic browser opening.
+Presets then live alongside it as `device.presets.json`. The default location is relative to the installed package, not the shell's current directory. Use `--config` when running an installed wheel from a location you cannot write to. `--port 8430` changes the loopback port; `--signalrgb-port` changes the SignalRGB UDP port (default 8421); `--no-browser` prevents automatic browser opening.
 
 ### Device file
 

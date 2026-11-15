@@ -13,3 +13,5 @@ output/
 .local/
 lotus_lamp_config.json
 .lotus_lamp.json
+.venv-build/
+/Lotus Light Studio.spec
